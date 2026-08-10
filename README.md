@@ -18,7 +18,7 @@ A entrega segue exatamente os 10 itens exigidos na **Regra Fundamental**:
 |---|---|---|
 | 1 | Análise da arquitetura | [`docs/00-analise-arquitetural.md`](docs/00-analise-arquitetural.md) |
 | 2 | Arquitetura proposta | [`docs/01-arquitetura-do-sistema.md`](docs/01-arquitetura-do-sistema.md) |
-| 3 | Modelo de dados | [`docs/02-modelo-de-dados.md`](docs/02-modelo-de-dados.md) · [`docs/sql/schema.sql`](docs/sql/schema.sql) · [`docs/sql/rls-policies.sql`](docs/sql/rls-policies.sql) |
+| 3 | Modelo de dados | [`docs/02-modelo-de-dados.md`](docs/02-modelo-de-dados.md) · [`docs/sql/schema.sql`](docs/sql/schema.sql) · [`docs/sql/rls-policies.sql`](docs/sql/rls-policies.sql) · [`docs/sql/validation-tests.sql`](docs/sql/validation-tests.sql) |
 | 4 | Fluxo de autenticação | [`docs/03-fluxo-de-autenticacao.md`](docs/03-fluxo-de-autenticacao.md) |
 | 5 | Fluxo de pedido | [`docs/04-fluxo-de-pedido.md`](docs/04-fluxo-de-pedido.md) |
 | 6 | Fluxo de estoque | [`docs/05-fluxo-de-estoque-virtual.md`](docs/05-fluxo-de-estoque-virtual.md) |
@@ -55,6 +55,34 @@ Documentos complementares:
 | Identificadores | **UUIDv7** em chaves expostas | Ordenável no tempo (localidade de índice) e não enumerável, diferente de `BIGSERIAL`. [ADR-0010](docs/adr/ADR-0010-dinheiro-em-centavos-e-uuidv7.md) |
 | Tempo real | **WebSocket (Redis adapter) + FCM/APNs para background** | Operador precisa ver o pedido chegar; cliente precisa saber "saiu para entrega" com o app fechado. [ADR-0011](docs/adr/ADR-0011-tempo-real-websocket-push.md) |
 | Cliente x franquia | **Conta de cliente global + vínculo `customer_organization_links` por franquia** | Cliente não recria conta a cada marca; franquia enxerga **apenas** quem pediu nela (LGPD). [ADR-0012](docs/adr/ADR-0012-identidade-de-cliente-global.md) |
+
+---
+
+## Validação executada
+
+O modelo de dados não é diagrama: o DDL e as políticas de isolamento foram **aplicados e testados contra
+PostgreSQL 16.13**. Resultados completos em [`docs/02-modelo-de-dados.md §15`](docs/02-modelo-de-dados.md#15-validação-executada).
+
+| Cenário | Resultado |
+|---|---|
+| **40 clientes simultâneos** disputando **1 unidade** em estoque | **1 venda** — nenhum overselling |
+| **60 clientes simultâneos** disputando **10 unidades** | **10 vendas**, estado final exato |
+| **50 pedidos simultâneos** gerando número amigável | 50 números, **50 distintos** |
+| Franquia B rodando `SELECT count(*) FROM orders` **sem cláusula de tenant** | **0 linhas** (a dona vê 1) |
+| Franquia B buscando o pedido de A **pelo UUID exato** (IDOR) | **0 linhas** |
+| `UPDATE`/`DELETE` em `order_status_history` | Recusado: *"append-only"* |
+| Pedido com `total ≠ subtotal + taxa − desconto` | Recusado pela `CHECK` |
+| Produto apontando para categoria de outra unidade | Recusado pela FK composta |
+
+O teste de cobertura de RLS **reprovou na primeira execução** e apontou duas tabelas sem política —
+`user_roles` (a tabela que *define* a autorização) e `product_modifier_groups`. Ambas corrigidas antes da
+entrega. É exatamente por isso que esse teste é bloqueante no CI.
+
+```bash
+psql -v ON_ERROR_STOP=1 -f docs/sql/schema.sql \
+                        -f docs/sql/rls-policies.sql \
+                        -f docs/sql/validation-tests.sql
+```
 
 ---
 
