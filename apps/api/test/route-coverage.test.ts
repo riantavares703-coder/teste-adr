@@ -112,6 +112,12 @@ describe('Cobertura de autorização das rotas', () => {
       'GET /v1/public/:organizationSlug/:branchSlug/menu',
       'GET /v1/public/:organizationSlug/branches',
       'GET /v1/public/products/:id',
+      // Cliente de balcão: emite sessão CUSTOMER sem código de verificação,
+      // porque quem chega pelo QR code não tem conta e não há provedor de
+      // mensagem numa instalação local. Pública por necessidade, mas contida:
+      // o telefone fica NÃO verificado, um número já verificado não pode ser
+      // assumido por esta via, e há teto por IP.
+      'POST /v1/auth/guest',
       'POST /v1/auth/login',
       'POST /v1/auth/otp/request',
       'POST /v1/auth/otp/verify',

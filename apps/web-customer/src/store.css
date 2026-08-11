@@ -151,3 +151,46 @@
   margin: 0 auto;
   gap: var(--sp-2);
 }
+
+.store__fieldset {
+  border: 1px solid var(--c-border);
+  margin: var(--sp-3) 0;
+}
+
+.store__fieldset legend {
+  font-weight: 700;
+  padding: 0 var(--sp-2);
+}
+
+/* Rótulo inteiro clicável: o alvo passa a ser a linha, não só o círculo. */
+.store__choice {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--touch-min);
+  cursor: pointer;
+}
+
+.store__choice input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--c-primary);
+}
+
+.store__status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+
+.store__number {
+  font-size: 1.8rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.store__hint {
+  color: var(--c-muted);
+  font-size: 0.9rem;
+}

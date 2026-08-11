@@ -21,6 +21,16 @@ const MAX_FAILED_LOGINS = 5;
 const OTP_TTL_SECONDS = 300;
 const OTP_MAX_ATTEMPTS = 5;
 
+/**
+ * Teto de sessões de convidado por IP.
+ *
+ * Folgado de propósito: num restaurante, dezenas de celulares saem do MESMO IP
+ * público. Apertar isso trancaria a mesa 12 porque a mesa 3 pediu antes. O
+ * limite existe contra automação, não contra movimento.
+ */
+const GUEST_RATE_WINDOW_MS = 10 * 60_000;
+const GUEST_MAX_PER_WINDOW = 60;
+
 @Injectable()
 export class AuthService {
   private readonly env = loadEnv();
@@ -241,6 +251,126 @@ export class AuthService {
     }
 
     return this.issueSession(user.id, 'CUSTOMER', null, user.tokenVersion, input);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Cliente de balcão: sem conta, sem código
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Sessão de CONVIDADO — quem chegou pelo QR code da mesa.
+   *
+   * Por que existe: o cliente de balcão não tem conta e não vai esperar um
+   * código chegar por WhatsApp para pedir um lanche. Sem isto, o fluxo do QR
+   * code simplesmente não fecha numa instalação local, onde não há provedor de
+   * mensagem configurado.
+   *
+   * O que ela NÃO é: um atalho que contorna o modelo de permissões. O convidado
+   * vira um usuário CUSTOMER de verdade, com o papel CUSTOMER e uma sessão
+   * normal — então RLS, `order:create`, `order:read_own` e a auditoria seguem
+   * valendo sem exceção. A única diferença é `phone_verified_at` nulo.
+   *
+   * O que se perde, declaradamente: o telefone não é verificado. Quem digita
+   * pode digitar o de outra pessoa. Duas defesas concretas:
+   *  - um telefone JÁ VERIFICADO nunca é assumido por esta via (senão bastaria
+   *    saber o número de um cliente para ler o histórico dele);
+   *  - limite por IP, para que a tela não vire uma fábrica de pedidos falsos.
+   *
+   * A confirmação real continua sendo humana: o operador vê o pedido na fila e
+   * decide aceitar.
+   */
+  async startGuestSession(input: {
+    phoneE164: string;
+    fullName: string;
+    ip?: string;
+    userAgent?: string;
+    deviceId?: string;
+  }): Promise<TokenPair> {
+    await this.assertGuestRateLimit(input.ip);
+
+    const existing = await this.db.platform
+      .select()
+      .from(s.users)
+      .where(
+        and(
+          eq(s.users.phoneE164, input.phoneE164),
+          eq(s.users.type, 'CUSTOMER'),
+          isNull(s.users.deletedAt),
+        ),
+      )
+      .limit(1);
+
+    let user = existing[0];
+
+    if (user?.phoneVerifiedAt) {
+      // Conta verificada não é assumível sem o código. Este caminho só é
+      // alcançável depois que um provedor de OTP real for configurado.
+      await this.recordLoginAttempt(
+        input.phoneE164,
+        user.id,
+        false,
+        'GUEST_SOBRE_CONTA_VERIFICADA',
+        input.ip,
+      );
+      throw forbidden(
+        'CONTA_VERIFICADA',
+        'Esse telefone já tem conta. Entre com o código enviado por mensagem.',
+      );
+    }
+
+    if (!user) {
+      const inserted = await this.db.platform
+        .insert(s.users)
+        .values({
+          id: uuidv7(),
+          type: 'CUSTOMER',
+          organizationId: null,
+          phoneE164: input.phoneE164,
+          fullName: input.fullName.trim() || 'Cliente',
+          // Nulo de propósito: marca no banco que este telefone NÃO foi provado.
+          phoneVerifiedAt: null,
+        } as never)
+        .returning();
+      user = inserted[0]!;
+
+      const customerRole = await this.roleIdByCode('CUSTOMER');
+      await this.db.platform.insert(s.userRoles).values({
+        id: uuidv7(),
+        userId: user.id,
+        roleId: customerRole,
+        organizationId: null,
+        branchId: null,
+      } as never);
+    } else if (input.fullName.trim() && input.fullName.trim() !== user.fullName) {
+      // Mesmo telefone, nome novo: o pedido de hoje é de quem está pedindo hoje.
+      await this.db.platform
+        .update(s.users)
+        .set({ fullName: input.fullName.trim() })
+        .where(eq(s.users.id, user.id));
+    }
+
+    await this.recordLoginAttempt(input.phoneE164, user.id, true, null, input.ip);
+    return this.issueSession(user.id, 'CUSTOMER', null, user.tokenVersion, input);
+  }
+
+  /**
+   * Teto de sessões de convidado por IP.
+   *
+   * Usa `login_attempts`, que já é a trilha de tentativas do sistema — e, por
+   * viver no banco, o limite sobrevive a um reinício do processo, diferente de
+   * um contador em memória.
+   */
+  private async assertGuestRateLimit(ip?: string): Promise<void> {
+    if (!ip) return;
+    const since = new Date(Date.now() - GUEST_RATE_WINDOW_MS);
+    const rows = await this.db.platform
+      .select({ count: sql<number>`count(*)::int` })
+      .from(s.loginAttempts)
+      .where(and(eq(s.loginAttempts.ipAddress, ip), gt(s.loginAttempts.createdAt, since)));
+
+    if ((rows[0]?.count ?? 0) >= GUEST_MAX_PER_WINDOW) {
+      throw tooManyRequests('MUITAS_TENTATIVAS', 'Muitos pedidos deste dispositivo. Aguarde alguns minutos.');
+    }
   }
 
   // ---------------------------------------------------------------------------

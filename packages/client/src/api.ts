@@ -325,6 +325,16 @@ export class ApiClient {
     return this.request('POST', '/v1/auth/otp/request', { body: { phone } });
   }
 
+  /**
+   * Sessão de convidado: nome e telefone, sem código de verificação.
+   * Usada pelo cliente que chegou pelo QR code do balcão.
+   */
+  async startGuestSession(input: { phone: string; fullName: string }): Promise<Session> {
+    const session = await this.request<Session>('POST', '/v1/auth/guest', { body: input });
+    await this.saveSession(session);
+    return session;
+  }
+
   async verifyOtp(input: { phone: string; code: string; fullName?: string }): Promise<Session> {
     const session = await this.request<Session>('POST', '/v1/auth/otp/verify', { body: input });
     await this.saveSession(session);

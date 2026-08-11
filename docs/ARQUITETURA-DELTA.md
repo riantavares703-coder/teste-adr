@@ -238,6 +238,56 @@ completude) mais as que a camada visual expôs:
 - Sem alerta automático para atraso de pedido — o "ATRASADOS" do painel é client-side (recalculado a cada
   carga), não um job de servidor com notificação.
 
+---
+
+# Prompt 04 — instalação de balcão (um clique, web, QR code)
+
+O alvo mudou de "dois apps mobile publicados nas lojas" para "o dono do restaurante abre um programa no
+computador do balcão, e os clientes pedem pelo celular escaneando um QR code". Isso produziu três desvios.
+
+## D9 — Clientes e operadores em web, não em app nativo
+
+**Origem:** o fluxo pedido. Quem chega ao balcão não instala aplicativo para pedir um lanche, e o operador
+precisa que o mesmo programa que sobe o sistema já abra o painel dele.
+
+`apps/mobile-customer` e `apps/mobile-operator` (React Native) foram substituídos por `apps/web-customer` e
+`apps/web-operator`, servidos pelo **próprio processo da API** — uma porta, um programa, um firewall.
+`packages/ui` virou `packages/ui-web`, com o tema aplicado por variáveis CSS.
+
+O ADR-0003 (React Native + Expo) fica **suspenso, não revogado**: a API não mudou, então um app nativo
+continua possível como fase 2 sobre a mesma superfície HTTP.
+
+## D10 — Sessão de convidado: pedir sem conta
+
+**Origem:** o cliente do QR code não tem conta, e o OTP do ADR-0005 depende de um provedor de WhatsApp que
+não existe numa instalação local — sem isto o fluxo simplesmente não fecha.
+
+`POST /v1/auth/guest` emite uma sessão `CUSTOMER` a partir de **nome e telefone**, sem verificação. É a
+única rota pública que emite credencial sem provar posse do identificador, e por isso está cercada:
+
+- o convidado é um usuário `CUSTOMER` **de verdade**, com o papel `CUSTOMER` e uma sessão normal — RLS,
+  `order:create`, `order:read_own` e auditoria seguem valendo sem exceção;
+- `phone_verified_at` fica **nulo**, registrando no banco que o número não foi provado;
+- um telefone **já verificado** não pode ser assumido por esta via (senão bastaria saber o número de um
+  cliente para ler o histórico dele);
+- teto por IP em `login_attempts`, folgado o bastante para um restaurante inteiro sair do mesmo IP público.
+
+**O que se perde, declaradamente:** o telefone não é verificado. A confirmação real continua humana — o
+operador vê o pedido na fila e decide aceitar. `apps/api/test/guest-ordering.test.ts` trava as dez
+propriedades acima; `route-coverage.test.ts` obriga qualquer rota pública nova a passar por revisão.
+
+## D11 — Banco empacotado com o programa
+
+**Origem:** exigir Docker do dono de um restaurante é a fricção que o Prompt 04 veio remover.
+
+`scripts/launcher.mjs` sobe um PostgreSQL próprio (binários baixados na primeira execução no Windows,
+instalação do sistema no Linux/macOS), aplica migrações, semeia um restaurante demonstrativo e abre o
+navegador no painel. Escrito em Node, e não em `.bat`, para ser testável fora do Windows.
+
+Os segredos (pepper, chave de dados, par Ed25519 do JWT) são gerados **uma vez** e persistidos em
+`runtime/secrets.json`: regenerá-los a cada inicialização invalidaria os hashes de senha gravados e
+deslogaria o operador a cada reinício — o motivo pelo qual o `TokenService` recusa chave efêmera em produção.
+
 **Não verificado neste ambiente**
 - Os apps foram type-checados (`tsc --noEmit`, saída limpa nos três pacotes e nos dois apps) mas **não**
   executados em emulador Android/iOS — não há emulador disponível neste ambiente. Layout, gestos e
