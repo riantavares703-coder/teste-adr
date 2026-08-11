@@ -1,8 +1,11 @@
 import type {
   AvailabilityView,
+  FontToken,
+  GradientStyle,
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
+  ResolvedTheme,
 } from '@plataforma/domain';
 
 /**
@@ -66,6 +69,81 @@ export interface MenuCategory {
   products: MenuProduct[];
 }
 
+/**
+ * Tema JÁ RESOLVIDO pelo servidor.
+ *
+ * O app não recebe a configuração crua e recalcula: recebe as cores derivadas
+ * prontas (`onPrimary`, `border`, `overlay`). Um app antigo, que não conheça
+ * uma regra nova de contraste, ainda desenha a marca corretamente.
+ */
+export interface StorefrontTheme extends ResolvedTheme {
+  displayName: string | null;
+  tagline: string | null;
+  logoUrl: string | null;
+  iconUrl: string | null;
+  coverUrl: string | null;
+}
+
+export interface BranchSummary {
+  id: string;
+  slug: string;
+  name: string;
+  status: string;
+  city: string | null;
+  district: string | null;
+  street: string | null;
+  streetNumber: string | null;
+  acceptsPickup: boolean;
+  acceptsDelivery: boolean;
+  logoUrl: string | null;
+  primaryColor: string | null;
+}
+
+export interface BrandingSettings {
+  branchId: string;
+  displayName: string | null;
+  tagline: string | null;
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
+  textColor: string;
+  backgroundColor: string;
+  cardColor: string;
+  fontToken: FontToken;
+  gradientStyle: GradientStyle;
+  gradientFrom: string;
+  gradientTo: string;
+  logoUrl: string | null;
+  iconUrl: string | null;
+  coverUrl: string | null;
+}
+
+export interface AnalyticsSummary {
+  periodDays: number;
+  since: string;
+  scope: 'ORGANIZATION' | 'BRANCHES';
+  branchCount: number;
+  totals: {
+    orderCount: number;
+    revenueCents: number;
+    averageTicketCents: number;
+    cancelledCount: number;
+  };
+  byBranch: Array<{
+    branchId: string;
+    branchName: string;
+    orderCount: number;
+    revenueCents: number;
+    averageTicketCents: number;
+  }>;
+  topProducts: Array<{
+    productId: string;
+    productName: string;
+    quantity: number;
+    revenueCents: number;
+  }>;
+}
+
 export interface Menu {
   branch: {
     id: string;
@@ -77,12 +155,7 @@ export interface Menu {
     city: string | null;
     district: string | null;
   };
-  branding: {
-    displayName: string;
-    tagline: string | null;
-    primaryColor: string | null;
-    logoUrl: string | null;
-  } | null;
+  theme: StorefrontTheme;
   settings: {
     minOrderCents: number;
     preparationTimeMinutes: number;
@@ -276,6 +349,11 @@ export class ApiClient {
 
   // --- vitrine ---------------------------------------------------------------
 
+  /** Unidades da franquia, para a etapa "escolher unidade". */
+  listBranches(organizationSlug: string): Promise<BranchSummary[]> {
+    return this.request('GET', `/v1/public/${organizationSlug}/branches`);
+  }
+
   getMenu(organizationSlug: string, branchSlug: string): Promise<Menu> {
     return this.request('GET', `/v1/public/${organizationSlug}/${branchSlug}/menu`);
   }
@@ -391,6 +469,33 @@ export class ApiClient {
 
   createCategory(branchId: string, body: { name: string; description?: string }) {
     return this.request('POST', `/v1/branches/${branchId}/categories`, { body });
+  }
+
+  // --- aparência e indicadores (administração) -------------------------------
+
+  getBranding(branchId: string): Promise<BrandingSettings> {
+    return this.request('GET', `/v1/branches/${branchId}/branding`);
+  }
+
+  /**
+   * Grava a identidade visual.
+   *
+   * O corpo é tipado com os campos exatos: um `Record<string, unknown>` aqui
+   * abriria espaço para o app mandar chave inventada, que o servidor recusa
+   * por `.strict()` — melhor o erro aparecer na compilação.
+   */
+  updateBranding(
+    branchId: string,
+    body: Partial<Omit<BrandingSettings, 'branchId' | 'logoUrl' | 'iconUrl' | 'coverUrl'>>,
+  ): Promise<BrandingSettings> {
+    return this.request('PUT', `/v1/branches/${branchId}/branding`, { body });
+  }
+
+  /** Indicadores consolidados. Sem `branchId`, o servidor decide o escopo. */
+  getAnalytics(options: { days?: number; branchId?: string } = {}): Promise<AnalyticsSummary> {
+    const query = new URLSearchParams({ days: String(options.days ?? 30) });
+    if (options.branchId) query.set('branchId', options.branchId);
+    return this.request('GET', `/v1/analytics/summary?${query.toString()}`);
   }
 
   setPixSettings(

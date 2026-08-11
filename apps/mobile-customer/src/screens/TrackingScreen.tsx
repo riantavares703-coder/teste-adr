@@ -1,55 +1,97 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { io, type Socket } from 'socket.io-client';
-import type { Menu, OrderDetail } from '@plataforma/client';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import type { OrderDetail } from '@plataforma/client';
 import {
-  ORDER_STATUS_LABEL,
-  PAYMENT_METHOD_LABEL,
-  PAYMENT_STATUS_LABEL,
-  isTerminalOrderStatus,
-  type OrderStatus,
-} from '@plataforma/domain';
-import {
+  AsyncBoundary,
   Badge,
   Button,
-  ErrorState,
-  Loading,
+  Card,
+  Notice,
   Price,
+  ProductRow,
   Row,
-  palette,
-  paymentStatusColors,
-  radius,
+  SectionHeader,
+  StickyBar,
+  ThemeProvider,
+  Timeline,
+  adoptTheme,
+  friendlyMessage,
   spacing,
-  statusColors,
-  themeFromBranding,
-  typography,
+  toneForOrder,
+  toneForPayment,
+  useResponsive,
+  useTheme,
 } from '@plataforma/ui';
 import { useSession } from '../session.js';
 import type { ScreenProps } from '../navigation.js';
-
-/** Etapas exibidas ao cliente, por modalidade. */
-const PICKUP_STEPS: OrderStatus[] = ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'AWAITING_PICKUP', 'PICKED_UP'];
-const DELIVERY_STEPS: OrderStatus[] = ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY', 'DELIVERED'];
+import { formatBRL } from '@plataforma/domain';
 
 /**
- * Acompanhamento do pedido (itens 8 e 11).
+ * ACOMPANHAMENTO.
  *
- * WebSocket para atualização ao vivo; polling como degradação quando a conexão
- * cai. O evento é apenas GATILHO — ao receber, buscamos o estado real por REST,
- * então evento perdido ou fora de ordem não corrompe a tela.
+ * A pergunta que esta tela responde é "onde está meu pedido agora". A linha do
+ * tempo mostra o caminho inteiro com o passo atual destacado — muito mais
+ * legível que uma lista de eventos, que obriga o cliente a interpretar.
+ *
+ * Os passos DEPENDEM da forma de recebimento: quem vai retirar nunca passa por
+ * "saiu para entrega", e mostrar esse passo esmaecido só geraria dúvida.
  */
-export function TrackingScreen({ route }: ScreenProps<'Tracking'>) {
+const DELIVERY_STEPS = [
+  { status: 'PENDING', label: 'Recebido' },
+  { status: 'CONFIRMED', label: 'Confirmado' },
+  { status: 'PREPARING', label: 'Em preparo' },
+  { status: 'OUT_FOR_DELIVERY', label: 'Saiu para entrega' },
+  { status: 'DELIVERED', label: 'Entregue' },
+];
+
+const PICKUP_STEPS = [
+  { status: 'PENDING', label: 'Recebido' },
+  { status: 'CONFIRMED', label: 'Confirmado' },
+  { status: 'PREPARING', label: 'Em preparo' },
+  { status: 'READY', label: 'Pronto' },
+  { status: 'PICKED_UP', label: 'Retirado' },
+];
+
+const FINISHED = ['DELIVERED', 'PICKED_UP', 'CANCELLED', 'REJECTED', 'EXPIRED'];
+
+export function TrackingScreen({ route, navigation }: ScreenProps<'Tracking'>) {
   const { orderId, menu } = route.params;
+  const theme = useMemo(() => adoptTheme(menu.theme, menu.theme), [menu.theme]);
+  return (
+    <ThemeProvider value={theme}>
+      <TrackingContent orderId={orderId} navigation={navigation} />
+    </ThemeProvider>
+  );
+}
+
+function TrackingContent({
+  orderId,
+  navigation,
+}: {
+  orderId: string;
+  navigation: ScreenProps<'Tracking'>['navigation'];
+}) {
+  const theme = useTheme();
+  const { gutter } = useResponsive();
   const { api } = useSession();
+
   const [detail, setDetail] = useState<OrderDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [live, setLive] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
 
   const load = useCallback(async () => {
+    setError(null);
     try {
       setDetail(await api.getOrder(orderId));
     } catch (e) {
-      setError((e as Error).message);
+      setError(e);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
   }, [api, orderId]);
 
@@ -57,180 +99,185 @@ export function TrackingScreen({ route }: ScreenProps<'Tracking'>) {
     void load();
   }, [load]);
 
+  const order = detail?.order ?? null;
+  const finished = order ? FINISHED.includes(order.status) : false;
+
   useEffect(() => {
-    let socket: Socket | null = null;
-    let poll: ReturnType<typeof setInterval> | null = null;
+    // A sondagem PARA quando o pedido termina. Continuar consultando um pedido
+    // entregue gasta bateria e dados do cliente sem trazer nada novo.
+    if (finished) return;
+    const timer = setInterval(() => void load(), 15_000);
+    return () => clearInterval(timer);
+  }, [finished, load]);
 
-    void (async () => {
-      const token = (api as unknown as { accessToken: string | null }).accessToken;
-      // Token no HANDSHAKE, nunca na query string (vaza em log de proxy).
-      socket = io(api.baseUrl, { transports: ['websocket'], auth: { token } });
+  const steps = order?.fulfillment === 'PICKUP' ? PICKUP_STEPS : DELIVERY_STEPS;
+  const currentIndex = order ? indexOfStatus(steps, order.status, detail?.history ?? []) : 0;
+  const cancelled = order ? ['CANCELLED', 'REJECTED', 'EXPIRED'].includes(order.status) : false;
 
-      socket.on('connect', () => {
-        setLive(true);
-        socket?.emit('join:order', { orderId });
-      });
-      socket.on('disconnect', () => setLive(false));
-      socket.on('order.status_changed', () => void load());
-      socket.on('payment.confirmed', () => void load());
-    })();
-
-    // Rede de segurança: se o WebSocket não conectar, o polling mantém a tela viva.
-    poll = setInterval(() => void load(), 15_000);
-
-    return () => {
-      socket?.disconnect();
-      if (poll) clearInterval(poll);
-    };
-  }, [api, orderId, load]);
-
-  if (error) return <ErrorState message={error} onRetry={() => void load()} />;
-  if (!detail) return <Loading label="Buscando seu pedido…" />;
-
-  const theme = themeFromBranding(menu.branding);
-  const steps = detail.order.fulfillment === 'PICKUP' ? PICKUP_STEPS : DELIVERY_STEPS;
-  const currentIndex = steps.indexOf(detail.order.status);
-  const cancelled = ['CANCELLED', 'REJECTED', 'EXPIRED'].includes(detail.order.status);
-  const orderColors = statusColors[detail.order.status] ?? statusColors.PENDING!;
-  const paymentColors = detail.payment
-    ? (paymentStatusColors[detail.payment.status] ?? paymentStatusColors.PENDING!)
-    : null;
-
-  const canCancel = detail.order.status === 'PENDING';
+  async function cancel() {
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      await api.cancelOrder(orderId);
+      await load();
+    } catch (e) {
+      // O servidor decide se dá para cancelar. Fora da janela, ele recusa — e
+      // o app mostra o motivo em vez de fingir que cancelou.
+      setCancelError(friendlyMessage(e));
+    } finally {
+      setCancelling(false);
+    }
+  }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={typography.caption}>PEDIDO</Text>
-        <Text style={styles.orderNumber}>#{detail.order.orderNumber}</Text>
-        <Badge label={ORDER_STATUS_LABEL[detail.order.status]} fg={orderColors.fg} bg={orderColors.bg} />
-        {live ? <Text style={styles.live}>● ao vivo</Text> : null}
-      </View>
-
-      {/* As duas máquinas de estado, lado a lado e sem se misturar. */}
-      <View style={styles.card}>
-        <Row label="Valor" value={formatBRL(detail.order.totalCents)} strong />
-        <Row label="Pagamento" value={PAYMENT_METHOD_LABEL[detail.order.paymentMethod]} />
-        <Row
-          label="Recebimento"
-          value={detail.order.fulfillment === 'PICKUP' ? 'Retirada' : 'Entrega'}
-        />
-        {detail.payment && paymentColors ? (
-          <View style={styles.paymentRow}>
-            <Text style={typography.body}>Status do pagamento</Text>
-            <Badge
-              label={PAYMENT_STATUS_LABEL[detail.payment.status]}
-              fg={paymentColors.fg}
-              bg={paymentColors.bg}
-            />
-          </View>
-        ) : null}
-      </View>
-
-      {cancelled ? (
-        <View style={[styles.card, { backgroundColor: palette.dangerBg }]}>
-          <Text style={[typography.heading, { color: palette.danger }]}>
-            {ORDER_STATUS_LABEL[detail.order.status]}
-          </Text>
-          {detail.history.at(-1)?.reason ? (
-            <Text style={typography.caption}>Motivo: {detail.history.at(-1)!.reason}</Text>
-          ) : null}
-        </View>
-      ) : (
-        <View style={styles.card}>
-          <Text style={typography.heading}>Andamento</Text>
-          {steps.map((step, index) => {
-            const done = index <= currentIndex;
-            const current = index === currentIndex;
-            return (
-              <View key={step} style={styles.step}>
-                <View
-                  style={[
-                    styles.stepDot,
-                    done && { backgroundColor: theme.primary, borderColor: theme.primary },
-                    current && styles.stepDotCurrent,
-                  ]}
+    <View style={[styles.screen, { backgroundColor: theme.background }]}>
+      <AsyncBoundary
+        loading={loading}
+        error={error}
+        onRetry={() => void load()}
+        onSessionExpired={() => navigation.navigate('Login')}
+      >
+        {order && detail ? (
+          <>
+            <ScrollView
+              contentContainerStyle={{ padding: gutter, paddingBottom: spacing.xxxl }}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={() => {
+                    setRefreshing(true);
+                    void load();
+                  }}
+                  tintColor={theme.primary}
                 />
-                <Text
-                  style={[
-                    typography.body,
-                    done && { color: palette.ink900, fontWeight: current ? '700' : '500' },
-                    !done && { color: palette.ink500 },
-                  ]}
-                >
-                  {ORDER_STATUS_LABEL[step]}
+              }
+            >
+              <Card>
+                <Text style={[theme.font('caption'), { color: theme.mutedText }]}>
+                  Pedido #{order.orderNumber}
                 </Text>
-              </View>
-            );
-          })}
-        </View>
-      )}
+                <Text style={theme.font('title')}>
+                  {cancelled ? 'Pedido encerrado' : toneForOrder(order.status).label}
+                </Text>
+                <View style={styles.badges}>
+                  <Badge tone={toneForOrder(order.status)} />
+                  {detail.payment ? <Badge tone={toneForPayment(detail.payment.status)} /> : null}
+                </View>
 
-      <View style={styles.card}>
-        <Text style={typography.heading}>Itens</Text>
-        {detail.items.map((item) => (
-          <View key={item.id} style={styles.item}>
-            <Text style={typography.body}>
-              {item.quantity}× {item.productNameSnapshot}
-            </Text>
-            <Price cents={item.lineTotalCents} size="sm" />
-          </View>
-        ))}
-        <View style={styles.divider} />
-        <Row label="Subtotal" value={formatBRL(detail.order.subtotalCents)} />
-        {detail.order.deliveryFeeCents > 0 ? (
-          <Row label="Taxa de entrega" value={formatBRL(detail.order.deliveryFeeCents)} />
+                {!cancelled ? (
+                  <View style={{ paddingTop: spacing.lg }}>
+                    <Timeline
+                      steps={steps.map((s) => ({ label: s.label }))}
+                      currentIndex={currentIndex}
+                    />
+                  </View>
+                ) : null}
+              </Card>
+
+              {cancelled ? (
+                <Notice tone="danger" title={toneForOrder(order.status).label}>
+                  Este pedido não será preparado. Em caso de dúvida, fale com a loja.
+                </Notice>
+              ) : null}
+
+              {detail.payment && detail.payment.status !== 'CONFIRMED' && detail.payment.method === 'PIX' ? (
+                <Notice tone="warning" title="Pagamento pendente">
+                  Assim que a loja confirmar o recebimento do Pix, o pedido avança.
+                </Notice>
+              ) : null}
+
+              <SectionHeader title="Itens" count={detail.items.length} />
+              <Card padded={false} style={{ paddingHorizontal: gutter }}>
+                {detail.items.map((item) => (
+                  <ProductRow
+                    key={item.id}
+                    title={`${item.quantity}× ${item.productNameSnapshot}`}
+                    subtitle={item.notes ? `Obs.: ${item.notes}` : null}
+                    right={<Price cents={item.lineTotalCents} size="sm" />}
+                  />
+                ))}
+              </Card>
+
+              <Card>
+                <Row label="Subtotal" value={formatBRL(order.subtotalCents)} />
+                {order.deliveryFeeCents > 0 ? (
+                  <Row label="Entrega" value={formatBRL(order.deliveryFeeCents)} />
+                ) : null}
+                <Row label="Total" value={formatBRL(order.totalCents)} strong />
+              </Card>
+
+              {detail.history.length > 0 ? (
+                <>
+                  <SectionHeader title="Histórico" />
+                  <Card>
+                    {detail.history.map((entry, index) => (
+                      <Row
+                        key={`${entry.toStatus}-${index}`}
+                        label={toneForOrder(entry.toStatus).label}
+                        value={formatDateTime(entry.createdAt)}
+                      />
+                    ))}
+                  </Card>
+                </>
+              ) : null}
+
+              {cancelError ? <Notice tone="danger">{cancelError}</Notice> : null}
+            </ScrollView>
+
+            <SafeAreaView edges={['bottom']}>
+              <StickyBar>
+                {order.status === 'PENDING' ? (
+                  <Button
+                    label="Cancelar pedido"
+                    variant="ghost"
+                    loading={cancelling}
+                    onPress={() => void cancel()}
+                    accessibilityHint="Cancela enquanto a loja ainda não confirmou"
+                  />
+                ) : null}
+                <Button
+                  label="Voltar ao cardápio"
+                  variant={order.status === 'PENDING' ? 'secondary' : 'primary'}
+                  onPress={() => navigation.popToTop()}
+                />
+              </StickyBar>
+            </SafeAreaView>
+          </>
         ) : null}
-        <Row label="Total" value={formatBRL(detail.order.totalCents)} strong />
-      </View>
-
-      {canCancel ? (
-        <Button
-          label="Cancelar pedido"
-          variant="danger"
-          onPress={() => {
-            void api.cancelOrder(orderId).then(load).catch((e: Error) => setError(e.message));
-          }}
-        />
-      ) : null}
-
-      {isTerminalOrderStatus(detail.order.status) ? null : (
-        <Text style={[typography.caption, styles.footNote]}>
-          Você receberá uma notificação a cada mudança de status.
-        </Text>
-      )}
-    </ScrollView>
+      </AsyncBoundary>
+    </View>
   );
 }
 
-function formatBRL(cents: number): string {
-  return `R$ ${Math.floor(cents / 100)},${String(cents % 100).padStart(2, '0')}`;
+/**
+ * Posição na linha do tempo.
+ *
+ * Não basta procurar o status ATUAL na lista: um pedido `READY` numa entrega
+ * não aparece em `DELIVERY_STEPS`. Por isso caminhamos pelo histórico e
+ * ficamos no passo mais avançado que realmente aconteceu.
+ */
+function indexOfStatus(
+  steps: Array<{ status: string }>,
+  current: string,
+  history: Array<{ toStatus: string }>,
+): number {
+  const direct = steps.findIndex((s) => s.status === current);
+  if (direct >= 0) return direct;
+
+  let best = 0;
+  for (const entry of history) {
+    const index = steps.findIndex((s) => s.status === entry.toStatus);
+    if (index > best) best = index;
+  }
+  return best;
+}
+
+function formatDateTime(iso: string): string {
+  const date = new Date(iso);
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: palette.ink100 },
-  content: { padding: spacing.lg, gap: spacing.md },
-  header: { alignItems: 'center', gap: spacing.xs },
-  orderNumber: { fontSize: 32, fontWeight: '800', color: palette.ink900 },
-  live: { fontSize: 11, color: palette.success, fontWeight: '700' },
-  card: { backgroundColor: palette.white, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm },
-  paymentRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-  },
-  step: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm },
-  stepDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: palette.ink300,
-    backgroundColor: palette.white,
-  },
-  stepDotCurrent: { transform: [{ scale: 1.25 }] },
-  item: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing.xs },
-  divider: { height: 1, backgroundColor: palette.ink100, marginVertical: spacing.sm },
-  footNote: { textAlign: 'center', marginTop: spacing.md },
+  screen: { flex: 1 },
+  badges: { flexDirection: 'row', gap: spacing.sm, paddingTop: spacing.sm, flexWrap: 'wrap' },
 });

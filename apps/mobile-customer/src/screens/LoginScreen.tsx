@@ -1,38 +1,57 @@
 import React, { useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Button, Notice, palette, radius, spacing, typography } from '@plataforma/ui';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  Button,
+  Card,
+  Field,
+  Notice,
+  Touchable,
+  friendlyMessage,
+  spacing,
+  useResponsive,
+  useTheme,
+} from '@plataforma/ui';
 import { useSession } from '../session.js';
 import type { ScreenProps } from '../navigation.js';
 
 /**
- * Entrada do cliente por telefone + código (item 3 da arquitetura de auth).
+ * ENTRADA DO CLIENTE — telefone + código.
  *
- * Sem senha: elimina de uma vez credential stuffing, senha reutilizada e todo o
- * fluxo de "esqueci a senha" — historicamente a superfície mais atacada de um
- * app de consumo. O telefone já é necessário para entrega e WhatsApp.
+ * Sem senha: o cliente não gerencia mais uma. O código chega por WhatsApp/SMS
+ * e vale por poucos minutos.
+ *
+ * A tela nunca revela se o telefone já tem conta. "Enviamos um código" é a
+ * resposta para número novo e para número conhecido — caso contrário, a tela
+ * vira um oráculo para descobrir quem é cliente daquela loja.
+ *
+ * Sempre apresentada como MODAL sobre a tela que pediu login (Checkout,
+ * Pagamento, Acompanhamento). Por isso o retorno é sempre `goBack()`: a tela
+ * de baixo continua montada, com os parâmetros dela intactos — não existe
+ * "para onde voltar" para decidir, e um `replace()` para uma tela que exige
+ * parâmetros (`Checkout`, `Tracking`) quebraria exatamente por faltar esses
+ * parâmetros.
  */
-export function LoginScreen({ navigation, route }: ScreenProps<'Login'>) {
+export function LoginScreen({ navigation }: ScreenProps<'Login'>) {
+  const theme = useTheme();
+  const { gutter } = useResponsive();
   const { api, refreshProfile } = useSession();
-  const [step, setStep] = useState<'phone' | 'code'>('phone');
+
+  const [step, setStep] = useState<'PHONE' | 'CODE'>('PHONE');
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [fullName, setFullName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function normalizePhone(input: string): string {
-    const digits = input.replace(/\D/g, '');
-    return digits.startsWith('55') ? `+${digits}` : `+55${digits}`;
-  }
-
   async function requestCode() {
     setBusy(true);
     setError(null);
     try {
-      await api.requestOtp(normalizePhone(phone));
-      setStep('code');
+      await api.requestOtp(toE164(phone));
+      setStep('CODE');
     } catch (e) {
-      setError((e as Error).message);
+      setError(friendlyMessage(e));
     } finally {
       setBusy(false);
     }
@@ -43,14 +62,15 @@ export function LoginScreen({ navigation, route }: ScreenProps<'Login'>) {
     setError(null);
     try {
       await api.verifyOtp({
-        phone: normalizePhone(phone),
+        phone: toE164(phone),
         code: code.trim(),
         fullName: fullName.trim() || undefined,
       });
       await refreshProfile();
       navigation.goBack();
     } catch (e) {
-      setError((e as Error).message);
+      setError(friendlyMessage(e));
+      setCode('');
     } finally {
       setBusy(false);
     }
@@ -59,93 +79,96 @@ export function LoginScreen({ navigation, route }: ScreenProps<'Login'>) {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.container}
+      style={[styles.screen, { backgroundColor: theme.background }]}
     >
-      <View style={styles.content}>
-        <Text style={typography.title}>
-          {step === 'phone' ? 'Entrar' : 'Confirme o código'}
-        </Text>
-        <Text style={typography.caption}>
-          {step === 'phone'
-            ? 'Enviaremos um código de 6 dígitos para o seu WhatsApp.'
-            : `Digite o código enviado para ${normalizePhone(phone)}.`}
-        </Text>
-
-        {step === 'phone' ? (
-          <>
-            <TextInput
-              accessibilityLabel="Telefone"
-              placeholder="(11) 99999-9999"
-              placeholderTextColor={palette.ink500}
-              keyboardType="phone-pad"
-              autoComplete="tel"
-              value={phone}
-              onChangeText={setPhone}
-              style={styles.input}
-            />
-            <Button
-              label={busy ? 'Enviando…' : 'Receber código'}
-              loading={busy}
-              disabled={phone.replace(/\D/g, '').length < 10}
-              onPress={() => void requestCode()}
-            />
-          </>
-        ) : (
-          <>
-            <TextInput
-              accessibilityLabel="Código de verificação"
-              placeholder="000000"
-              placeholderTextColor={palette.ink500}
-              keyboardType="number-pad"
-              // Preenchimento automático do SMS, sem sugestão de teclado.
-              textContentType="oneTimeCode"
-              autoComplete="sms-otp"
-              autoCorrect={false}
-              maxLength={6}
-              value={code}
-              onChangeText={setCode}
-              style={[styles.input, styles.codeInput]}
-            />
-            <TextInput
-              accessibilityLabel="Seu nome"
-              placeholder="Seu nome (para o primeiro acesso)"
-              placeholderTextColor={palette.ink500}
-              value={fullName}
-              onChangeText={setFullName}
-              style={styles.input}
-            />
-            <Button
-              label={busy ? 'Verificando…' : 'Entrar'}
-              loading={busy}
-              disabled={code.trim().length !== 6}
-              onPress={() => void verify()}
-            />
-            <Button label="Trocar telefone" variant="ghost" onPress={() => setStep('phone')} />
-          </>
-        )}
-
-        {error ? <Notice tone="danger">{error}</Notice> : null}
-        {route.params?.returnTo ? (
-          <Text style={typography.caption}>
-            Depois de entrar, você volta para finalizar o pedido.
+      <SafeAreaView style={styles.screen}>
+        <ScrollView contentContainerStyle={[styles.content, { padding: gutter }]}>
+          <Text style={theme.font('title')}>
+            {step === 'PHONE' ? 'Entrar' : 'Confirme o código'}
           </Text>
-        ) : null}
-      </View>
+          <Text style={[theme.font('body'), { color: theme.mutedText }]}>
+            {step === 'PHONE'
+              ? 'Usamos seu telefone para você acompanhar o pedido.'
+              : `Enviamos um código para ${phone}.`}
+          </Text>
+
+          <Card>
+            {step === 'PHONE' ? (
+              <Field
+                label="Telefone"
+                placeholder="(11) 90000-0000"
+                value={phone}
+                onChangeText={setPhone}
+                keyboardType="phone-pad"
+                autoComplete="tel"
+                hint="Você receberá um código de verificação."
+              />
+            ) : (
+              <View style={{ gap: spacing.md }}>
+                <Field
+                  label="Código"
+                  placeholder="000000"
+                  value={code}
+                  onChangeText={setCode}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                />
+                <Field
+                  label="Como podemos te chamar?"
+                  placeholder="Seu nome"
+                  value={fullName}
+                  onChangeText={setFullName}
+                  autoComplete="name"
+                  hint="Só na primeira vez."
+                />
+              </View>
+            )}
+          </Card>
+
+          {error ? <Notice tone="danger">{error}</Notice> : null}
+
+          <Button
+            label={step === 'PHONE' ? 'Receber código' : 'Confirmar'}
+            loading={busy}
+            disabled={step === 'PHONE' ? phone.trim().length < 10 : code.trim().length < 4}
+            onPress={() => void (step === 'PHONE' ? requestCode() : verify())}
+          />
+
+          {step === 'CODE' ? (
+            <Touchable
+              onPress={() => {
+                setStep('PHONE');
+                setCode('');
+                setError(null);
+              }}
+              accessibilityLabel="Corrigir telefone"
+            >
+              <Text
+                style={[theme.font('caption'), { color: theme.primary, textAlign: 'center', padding: spacing.md }]}
+              >
+                Usar outro telefone
+              </Text>
+            </Touchable>
+          ) : null}
+        </ScrollView>
+      </SafeAreaView>
     </KeyboardAvoidingView>
   );
 }
 
+/**
+ * Normaliza para E.164.
+ *
+ * É conveniência de digitação, não validação: o servidor valida de novo e
+ * recusa o que não for um número plausível.
+ */
+function toE164(input: string): string {
+  const digits = input.replace(/\D/g, '');
+  if (input.trim().startsWith('+')) return `+${digits}`;
+  return digits.length > 11 ? `+${digits}` : `+55${digits}`;
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: palette.white },
-  content: { flex: 1, justifyContent: 'center', padding: spacing.xl, gap: spacing.md },
-  input: {
-    borderWidth: 1,
-    borderColor: palette.ink300,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    minHeight: 52,
-    fontSize: 16,
-    color: palette.ink900,
-  },
-  codeInput: { fontSize: 28, letterSpacing: 8, textAlign: 'center', fontWeight: '700' },
+  screen: { flex: 1 },
+  content: { flexGrow: 1, justifyContent: 'center', gap: spacing.md },
 });

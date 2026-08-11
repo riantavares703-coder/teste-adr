@@ -12,6 +12,9 @@
       "allowBackup": false
     },
     "plugins": ["expo-secure-store"],
-    "extra": { "apiBaseUrl": "http://10.0.2.2:3000" }
+    "extra": {
+      "apiBaseUrl": "http://10.0.2.2:3000",
+      "organizationSlug": "acme"
+    }
   }
 }

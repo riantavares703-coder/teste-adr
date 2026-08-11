@@ -15,3 +15,4 @@ export * from './pricing.js';
 export * from './availability.js';
 export * from './pix-brcode.js';
 export * from './order-number.js';
+export * from './branding.js';

@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 import { ApiClient, type Profile, type TokenStorage } from '@plataforma/client';
+import { API_BASE_URL } from './config.js';
 
 /**
  * Armazenamento do refresh token.
@@ -29,10 +29,6 @@ const secureStorage: TokenStorage = {
     });
   },
 };
-
-const API_BASE_URL =
-  (Constants.expoConfig?.extra as { apiBaseUrl?: string } | undefined)?.apiBaseUrl ??
-  'http://localhost:3000';
 
 interface SessionValue {
   api: ApiClient;

@@ -1,20 +1,27 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { Menu } from '@plataforma/client';
+import type { BranchSummary, Menu } from '@plataforma/client';
 
 /**
- * Tipagem das rotas.
+ * Rotas do app do cliente — o fluxo do item 6, sem tela desnecessária.
  *
- * Sem isto, `navigation.navigate('Payment', { pedido })` compila com qualquer
- * parâmetro e quebra só em tempo de execução. Com o ParamList, errar o nome da
- * tela ou o formato dos parâmetros vira erro de compilação.
+ *   Branches → Menu → Product → Cart → Checkout → Payment → Tracking
+ *
+ * "Adicionar" NÃO é tela: acontece no card do cardápio (item simples) ou na
+ * folha de opções (item com adicionais). Cada tela a menos entre o cliente e o
+ * pedido é conversão.
+ *
+ * `Menu` viaja pelos parâmetros porque carrega o TEMA da loja: navegar sem ele
+ * faria a tela seguinte piscar com a marca padrão antes de recarregar.
  */
 export type RootStackParamList = {
-  Menu: undefined;
+  Branches: undefined;
+  Menu: { branch: BranchSummary };
   Product: { productId: string; menu: Menu };
   Cart: { menu: Menu };
+  Checkout: { menu: Menu };
   Payment: { orderId: string; menu: Menu };
   Tracking: { orderId: string; menu: Menu };
-  Login: { returnTo?: keyof RootStackParamList } | undefined;
+  Login: undefined;
 };
 
 export type ScreenProps<T extends keyof RootStackParamList> = NativeStackScreenProps<

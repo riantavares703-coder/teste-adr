@@ -135,3 +135,111 @@ Isso não afrouxa o isolamento, e há teste para cada afirmação:
 - o que passa a enxergar (produtos, preços, unidade) é a vitrine pública daquela loja.
 
 É um refinamento de aplicação do ADR-0012, não uma revisão dele — por isso está aqui e não como novo ADR.
+
+---
+
+# Prompt 03 — camada visual, branding e multifranquia
+
+O Prompt 03 não altera nenhuma decisão dos dois anteriores: nenhuma máquina de estado, nenhuma regra de
+estoque, nenhuma política de RLS mudou. O que ele acrescenta é uma camada nova, com as mesmas garantias de
+segurança do backend aplicadas à personalização visual.
+
+## D5 — Identidade visual como enumeração, nunca como estilo livre
+
+**Origem:** exigência explícita — *"Não permitir que o usuário injete CSS ou HTML arbitrário."*
+
+A defesa não é sanitização de string; é ausência de superfície. `packages/domain/src/branding.ts` define:
+
+- **fonte** como token de uma lista fechada de seis valores (`INTER` … `DM_SANS`), nunca um nome de família
+  livre — `fontFamilyOf()` devolve `undefined` para qualquer token desconhecido, e é isso que impede um
+  valor hostil de virar `fontFamily` num `StyleSheet`;
+- **gradiente** como token de estilo fechado (`NONE`, `VERTICAL`, `HORIZONTAL`, `DIAGONAL`,
+  `DIAGONAL_REVERSE`) — os ângulos são do sistema, não do lojista;
+- **cor** validada por regex ancorada `^#[0-9a-fA-F]{6}$` e reemitida normalizada.
+
+O que é gravado em `branding_settings` (migração `0004_branding_and_analytics.sql`) não é estilo — é
+enumeração. Duas camadas independentes recusam o que foge disso: o Zod `.strict()` no controller (campo
+não declarado nunca é ignorado em silêncio, é rejeitado) e os tipos `brand_font`/`gradient_style` do
+PostgreSQL, que recusam mesmo uma gravação feita por fora da API. Há teste para as duas camadas em
+`apps/api/test/branding-and-analytics.test.ts`.
+
+## D6 — Contraste é validação, não sugestão
+
+O item 11 pede acessibilidade; tratá-la como recomendação de UI é como não pedir nada. `contrastIssues()`
+recusa combinações abaixo do mínimo WCAG 2.1 AA (4,5:1 para texto, 3:1 para a cor principal contra o
+fundo) — o servidor devolve 422 com os problemas encontrados, e o card/botão inválido nunca é publicado.
+
+A cor de texto sobre botão (`onPrimary`, `onAccent`) **não é configurável**: é derivada por `bestTextOn()`,
+que escolhe entre preto e branco puros. Isso não é estético — é o que torna **impossível** o lojista
+publicar um botão com texto invisível, porque não existe campo para errar. O teste varre 4096 cores do
+espaço RGB e prova que o pior caso alcançável ainda é 4,583:1, acima do piso exigido — a garantia é
+estrutural, não amostral.
+
+## D7 — Tema resolvido no servidor, não recalculado no app
+
+`GET /v1/public/:org/:branch/menu` devolve `theme` já com as cores derivadas (`onPrimary`, `border`,
+`overlay`, `mutedText`) prontas — o mesmo `resolveTheme()` do domínio que o editor de aparência usa no
+preview. Dois apps em versões diferentes desenham a marca de forma idêntica, e uma regra de contraste nova
+no servidor não exige atualizar o app para valer.
+
+## D8 — Indicadores consolidados como superfície de agregação, com o mesmo isolamento de sempre
+
+O item 8 pediu totais por franquia. `AnalyticsService.resolveScope()` decide **no servidor** quais unidades
+entram na soma — nunca a partir de um parâmetro do cliente: `isPlatformAdmin`/`isOrgWide` somam a
+organização inteira; qualquer outro papel soma apenas `principal.branchScope`. Uma unidade pedida
+explicitamente passa por `BranchAccessService.assertAccess` antes de tocar o banco, e a consulta roda sob
+RLS como qualquer outra — três camadas, porque agregação é o tipo de vazamento que não aparece num teste de
+"não vejo o pedido do outro" (nenhuma linha de `orders` sai da resposta, só um número que não deveria
+existir). `apps/api/test/branding-and-analytics.test.ts` tem uma seção dedicada a essa classe de vazamento.
+
+## Extensões de schema
+
+| Tabela/coluna | Papel |
+|---|---|
+| `branding_settings.{accent,text,background,card}_color` | As cinco cores do item 1 (a sexta, principal, já existia) |
+| `branding_settings.{gradient_from,gradient_to,gradient_style}` | Gradiente do item 3 |
+| `branding_settings.font_token` | Tipografia do item 2, tipo `brand_font` |
+| `branding_settings.icon_storage_key` | Ícone/favicon do item 1 |
+| `branding_settings.updated_by` | Quem alterou a aparência, para a auditoria |
+| `orders_org_placed_idx`, `orders_org_revenue_idx` | Suportam a agregação do item 8 sem varredura sequencial |
+
+## O que ficou fora — lista objetiva para produção
+
+O Prompt 03 pediu, ao final, uma lista do que falta para considerar o produto pronto para produção. Nada
+abaixo é regressão desta entrega — são lacunas já conhecidas dos Prompts 01/02 (repetidas aqui por
+completude) mais as que a camada visual expôs:
+
+**Segurança e autenticação**
+- MFA/TOTP para conta de administrador (mencionado no modelo de ameaças, não implementado).
+- Fluxo de recuperação de senha para STAFF (hoje um `UNIT_MANAGER` reseta a senha de outro usuário).
+- Rate limiting distribuído (hoje em memória do processo; precisa de Redis para múltiplas instâncias).
+- Cache de permissões distribuído (mesma razão).
+
+**Pagamento**
+- Adapter de PSP real com webhook — a confirmação de Pix continua manual (ADR-0008, por decisão explícita
+  do Prompt 01, mas é o maior "não fingir integração real" que resta antes de produção).
+
+**Geolocalização**
+- PostGIS + zonas de entrega por polígono (D4) — raio e CEP cobrem a Fase 1.
+
+**Aparência (o que este prompt implementa parcialmente)**
+- Upload de logo/ícone pelo editor de aparência: o campo `iconStorageKey` existe no schema e a leitura já
+  funciona; falta o botão de upload no app do administrador (o pipeline de mídia do Prompt 02
+  — `MediaService` — já processa qualquer imagem enviada, é reutilizável sem mudança).
+- Paleta de cores por acessibilidade (ex.: simulação de daltonismo) — o contraste mínimo AA está garantido;
+  WCAG AAA e verificação de daltonismo não.
+- Fontes carregadas via `expo-font`: os tokens e o mapeamento de família já existem
+  (`fontFamilyOf`); falta empacotar os arquivos `.ttf` das seis fontes nos binários e chamar
+  `Font.loadAsync` na inicialização — sem isso, o app usa a fonte padrão do sistema como fallback
+  silencioso (comportamento seguro, mas não é a tipografia escolhida).
+
+**Observabilidade**
+- Sem APM/tracing distribuído; logs estruturados existem, mas não há agregador configurado.
+- Sem alerta automático para atraso de pedido — o "ATRASADOS" do painel é client-side (recalculado a cada
+  carga), não um job de servidor com notificação.
+
+**Não verificado neste ambiente**
+- Os apps foram type-checados (`tsc --noEmit`, saída limpa nos três pacotes e nos dois apps) mas **não**
+  executados em emulador Android/iOS — não há emulador disponível neste ambiente. Layout, gestos e
+  microinterações não foram observados visualmente, só revisados por leitura de código e pelos testes de
+  dados que os alimentam.

@@ -14,6 +14,7 @@ import { ApiClient, type Profile, type TokenStorage } from '@plataforma/client';
  * O ACCESS token nunca é persistido: vive só em memória, dentro do ApiClient.
  */
 const REFRESH_KEY = 'plataforma.operator.refresh_token';
+const ORG_KEY = 'plataforma.operator.organization';
 
 const secureStorage: TokenStorage = {
   async getRefreshToken() {
@@ -37,9 +38,14 @@ const API_BASE_URL =
 interface SessionValue {
   api: ApiClient;
   profile: Profile | null;
+  /** Identificador da franquia usado no login — não é credencial nem segredo. */
+  organizationSlug: string | null;
   isReady: boolean;
   isAuthenticated: boolean;
+  /** Verificação de conveniência para ESCONDER interface. O servidor decide. */
+  can: (permission: string) => boolean;
   refreshProfile: () => Promise<void>;
+  signIn: (input: { organizationSlug: string; email: string; password: string }) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -47,6 +53,7 @@ const SessionContext = createContext<SessionValue | null>(null);
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [organizationSlug, setOrganizationSlug] = useState<string | null>(null);
   const [isReady, setReady] = useState(false);
 
   const api = useMemo(
@@ -66,7 +73,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     void (async () => {
       const restored = await api.restoreSession();
-      if (restored && !cancelled) await refreshProfile();
+      if (restored && !cancelled) {
+        await refreshProfile();
+        setOrganizationSlug(await SecureStore.getItemAsync(ORG_KEY));
+      }
       if (!cancelled) setReady(true);
     })();
     return () => {
@@ -74,21 +84,39 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     };
   }, [api, refreshProfile]);
 
+  const signIn = useCallback(
+    async (input: { organizationSlug: string; email: string; password: string }) => {
+      await api.loginStaff(input);
+      await SecureStore.setItemAsync(ORG_KEY, input.organizationSlug);
+      setOrganizationSlug(input.organizationSlug);
+      await refreshProfile();
+    },
+    [api, refreshProfile],
+  );
+
   const signOut = useCallback(async () => {
     await api.logout();
+    await SecureStore.deleteItemAsync(ORG_KEY);
     setProfile(null);
+    setOrganizationSlug(null);
   }, [api]);
 
   const value = useMemo<SessionValue>(
     () => ({
       api,
       profile,
+      organizationSlug,
       isReady,
       isAuthenticated: profile !== null,
+      // Esconder o botão evita que o operador tente algo que vai falhar.
+      // NÃO é controle de acesso: as permissões chegam do servidor a cada
+      // `me()` e são reconferidas em toda requisição (item 10).
+      can: (permission: string) => profile?.permissions.includes(permission) ?? false,
       refreshProfile,
+      signIn,
       signOut,
     }),
-    [api, profile, isReady, refreshProfile, signOut],
+    [api, profile, organizationSlug, isReady, refreshProfile, signIn, signOut],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

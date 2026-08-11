@@ -178,15 +178,42 @@ export const storeSettings = pgTable('store_settings', {
   currency: char('currency', { length: 3 }).notNull().default('BRL'),
 });
 
+export const brandFont = pgEnum('brand_font', [
+  'INTER',
+  'POPPINS',
+  'MONTSERRAT',
+  'ROBOTO',
+  'NUNITO',
+  'DM_SANS',
+]);
+
+export const gradientStyle = pgEnum('gradient_style', [
+  'NONE',
+  'VERTICAL',
+  'HORIZONTAL',
+  'DIAGONAL',
+  'DIAGONAL_REVERSE',
+]);
+
 export const brandingSettings = pgTable('branding_settings', {
   branchId: uuid('branch_id').primaryKey(),
   organizationId: uuid('organization_id').notNull(),
   logoStorageKey: text('logo_storage_key'),
   coverStorageKey: text('cover_storage_key'),
+  iconStorageKey: text('icon_storage_key'),
   primaryColor: char('primary_color', { length: 7 }),
   secondaryColor: char('secondary_color', { length: 7 }),
+  accentColor: char('accent_color', { length: 7 }),
+  textColor: char('text_color', { length: 7 }),
+  backgroundColor: char('background_color', { length: 7 }),
+  cardColor: char('card_color', { length: 7 }),
+  gradientFrom: char('gradient_from', { length: 7 }),
+  gradientTo: char('gradient_to', { length: 7 }),
+  fontToken: brandFont('font_token'),
+  gradientStyle: gradientStyle('gradient_style'),
   displayName: text('display_name'),
   tagline: text('tagline'),
+  updatedBy: uuid('updated_by'),
 });
 
 export const pixSettings = pgTable('pix_settings', {

@@ -1,8 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { uuidv7 } from '../../common/uuid.js';
 
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { resolveAvailability } from '@plataforma/domain';
+import { themeOf } from '../branding/branding.service.js';
 import { Database, type Db } from '../../db/client.js';
 import * as s from '../../db/schema.js';
 import { conflict, notFound } from '../../common/errors.js';
@@ -37,6 +38,50 @@ export class CatalogService {
   // ===========================================================================
   // Vitrine pública (cliente)
   // ===========================================================================
+
+  /**
+   * Unidades de uma franquia, para a etapa "ESCOLHER UNIDADE" (item 6).
+   *
+   * Público de propósito: é a vitrine. Mas devolve só o que a vitrine precisa —
+   * nome, bairro, cidade, formas de atendimento e a identidade visual. Nada de
+   * telefone interno, coordenadas exatas, faturamento ou configuração.
+   * Unidades arquivadas não aparecem; as pausadas aparecem com o status, senão
+   * o cliente entra num cardápio que não aceita pedido e só descobre no fim.
+   */
+  async listPublicBranches(organizationSlug: string) {
+    const rows = await this.db.platform
+      .select({ branch: s.branches, branding: s.brandingSettings })
+      .from(s.branches)
+      .innerJoin(s.organizations, eq(s.organizations.id, s.branches.organizationId))
+      .leftJoin(s.brandingSettings, eq(s.brandingSettings.branchId, s.branches.id))
+      .where(
+        and(
+          eq(s.organizations.slug, organizationSlug),
+          isNull(s.branches.deletedAt),
+          ne(s.branches.status, 'ARCHIVED'),
+        ),
+      )
+      .orderBy(asc(s.branches.name));
+
+    if (rows.length === 0) {
+      throw notFound('FRANQUIA_NAO_ENCONTRADA', 'Estabelecimento não encontrado');
+    }
+
+    return rows.map(({ branch, branding }) => ({
+      id: branch.id,
+      slug: branch.slug,
+      name: branding?.displayName ?? branch.name,
+      status: branch.status,
+      city: branch.city,
+      district: branch.district,
+      street: branch.street,
+      streetNumber: branch.streetNumber,
+      acceptsPickup: branch.acceptsPickup,
+      acceptsDelivery: branch.acceptsDelivery,
+      logoUrl: branding?.logoStorageKey ? `/v1/media/${branding.logoStorageKey}` : null,
+      primaryColor: branding?.primaryColor ?? null,
+    }));
+  }
 
   /**
    * Cardápio da unidade, agrupado por categoria.
@@ -150,15 +195,17 @@ export class CatalogService {
         city: branch.city,
         district: branch.district,
       },
-      branding: branding
-        ? {
-            displayName: branding.displayName ?? branch.name,
-            tagline: branding.tagline,
-            primaryColor: branding.primaryColor,
-            secondaryColor: branding.secondaryColor,
-            logoUrl: branding.logoStorageKey ? `/v1/media/${branding.logoStorageKey}` : null,
-          }
-        : null,
+      // TEMA JÁ RESOLVIDO, não a configuração crua.
+      //
+      // O servidor entrega `primary`, `onPrimary`, `border`, `overlay` — tudo
+      // derivado aqui. Duas razões: o cálculo de contraste roda uma vez, no
+      // mesmo lugar para todos os apps; e uma versão antiga do app, que não
+      // conhecesse a regra nova, ainda desenharia a marca certa.
+      // `displayName` cai no nome da unidade quando o lojista não personalizou.
+      theme: {
+        ...themeOf(branding ?? null),
+        displayName: branding?.displayName ?? branch.name,
+      },
       settings: settings
         ? {
             minOrderCents: settings.minOrderCents,

@@ -1,24 +1,19 @@
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
-import type { INestApplication } from '@nestjs/common';
-import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants';
+import type { INestApplication, Type } from '@nestjs/common';
+import { PATH_METADATA, METHOD_METADATA, MODULE_METADATA } from '@nestjs/common/constants';
 import { PERMISSION_KEY, PUBLIC_KEY } from '../src/common/principal.js';
+import { AppModule } from '../src/app.module.js';
 import { createTestApp, setupDatabase } from './helpers/harness.js';
 
-import { AuthController } from '../src/modules/auth/auth.controller.js';
-import { CatalogController } from '../src/modules/catalog/catalog.controller.js';
-import { InventoryController } from '../src/modules/inventory/inventory.controller.js';
-import { OrderingController } from '../src/modules/ordering/ordering.controller.js';
-import { PaymentsController } from '../src/modules/payments/payments.controller.js';
-import { MediaController } from '../src/modules/media/media.controller.js';
-
-const CONTROLLERS = [
-  AuthController,
-  CatalogController,
-  InventoryController,
-  OrderingController,
-  PaymentsController,
-  MediaController,
-];
+/**
+ * A lista de controllers vem do PRÓPRIO módulo, por metadado.
+ *
+ * Antes era uma lista escrita à mão neste arquivo — o que abria um buraco no
+ * teste que ele existe para fechar: um controller novo, registrado no
+ * AppModule mas esquecido aqui, passaria sem nunca ter as rotas conferidas.
+ * Lendo do AppModule, entrar no ar e entrar na verificação viram o mesmo ato.
+ */
+const CONTROLLERS: Type<unknown>[] = Reflect.getMetadata(MODULE_METADATA.CONTROLLERS, AppModule) ?? [];
 
 const METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'ALL', 'OPTIONS', 'HEAD', 'SEARCH'];
 
@@ -36,7 +31,7 @@ function enumerateRoutes(): RouteInfo[] {
 
   for (const controller of CONTROLLERS) {
     const basePath = Reflect.getMetadata(PATH_METADATA, controller) ?? '';
-    const prototype = controller.prototype as Record<string, unknown>;
+    const prototype = controller.prototype as unknown as Record<string, unknown>;
 
     for (const name of Object.getOwnPropertyNames(prototype)) {
       if (name === 'constructor') continue;
@@ -80,9 +75,12 @@ describe('Cobertura de autorização das rotas', () => {
     await app.close();
   });
 
-  it('encontra as rotas registradas', () => {
-    const routes = enumerateRoutes();
-    expect(routes.length).toBeGreaterThan(15);
+  it('enxerga todos os controllers do módulo', () => {
+    // Se a leitura de metadado quebrar numa atualização do Nest, a lista fica
+    // vazia e os testes seguintes passariam por vacuidade. Esta asserção é a
+    // trava contra "verde por não ter olhado nada".
+    expect(CONTROLLERS.length).toBeGreaterThanOrEqual(8);
+    expect(enumerateRoutes().length).toBeGreaterThan(20);
   });
 
   it('TODA rota declara @RequirePermission ou @Public', () => {
@@ -112,6 +110,7 @@ describe('Cobertura de autorização das rotas', () => {
       'GET /v1/auth/me',
       'GET /v1/media/:storageKey',
       'GET /v1/public/:organizationSlug/:branchSlug/menu',
+      'GET /v1/public/:organizationSlug/branches',
       'GET /v1/public/products/:id',
       'POST /v1/auth/login',
       'POST /v1/auth/otp/request',

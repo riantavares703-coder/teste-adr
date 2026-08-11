@@ -3,12 +3,16 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { Loading, palette } from '@plataforma/ui';
+import { LoadingState, defaultTheme } from '@plataforma/ui';
 import { SessionProvider, useSession } from './src/session';
+import { BranchProvider } from './src/branch-context';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { DashboardScreen } from './src/screens/DashboardScreen';
+import { OrdersScreen } from './src/screens/OrdersScreen';
 import { InventoryScreen } from './src/screens/InventoryScreen';
-import { AdminScreen } from './src/screens/AdminScreen';
+import { SettingsScreen } from './src/screens/SettingsScreen';
+import { AppearanceScreen } from './src/screens/AppearanceScreen';
+import { FranchiseScreen } from './src/screens/FranchiseScreen';
 
 import type { RootStackParamList } from './src/navigation';
 
@@ -18,54 +22,39 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
  * APP DO OPERADOR E DO ADMINISTRADOR.
  *
  * Duas das três experiências do sistema vivem aqui, separadas por PERMISSÃO,
- * não por build:
+ * não por build: quem só opera pedidos vê Dashboard/Orders/Inventory; quem
+ * administra a unidade ou a franquia também vê Settings, Appearance e
+ * Franchise. Todas as telas navegam livremente — é `SettingsScreen` quem
+ * filtra o que aparece, a partir de `profile.permissions`.
  *
- *  - OPERADOR: fila de pedidos, transições de status, estoque virtual,
- *    confirmação de recebimento de Pix.
- *  - ADMINISTRADOR: tudo acima + catálogo, preço e chave Pix.
- *
- * A aba "Administração" só aparece para quem tem as permissões — e mesmo que
- * alguém force a navegação, o servidor recusa com 403. Esconder botão é
- * conveniência; a autorização é sempre do lado do servidor.
+ * Esconder é conveniência. A recusa de verdade é sempre do servidor.
  */
 function Routes() {
-  const { isReady, isAuthenticated, profile } = useSession();
+  const { isReady, isAuthenticated } = useSession();
 
-  if (!isReady) return <Loading label="Verificando sessão…" />;
+  if (!isReady) return <LoadingState label="Verificando sessão…" />;
   if (!isAuthenticated) return <LoginScreen />;
 
-  const isAdmin =
-    profile?.permissions.includes('product:create') ||
-    profile?.permissions.includes('pix_settings:update');
-
   return (
-    <NavigationContainer>
-      <Stack.Navigator
-        screenOptions={{
-          headerStyle: { backgroundColor: palette.white },
-          headerTintColor: palette.ink900,
-          headerTitleStyle: { fontWeight: '700' },
-        }}
-      >
-        <Stack.Screen
-          name="Dashboard"
-          component={DashboardScreen}
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name="Inventory"
-          component={InventoryScreen}
-          options={{ title: 'Estoque virtual' }}
-        />
-        {isAdmin ? (
-          <Stack.Screen
-            name="Admin"
-            component={AdminScreen}
-            options={{ title: 'Administração' }}
-          />
-        ) : null}
-      </Stack.Navigator>
-    </NavigationContainer>
+    <BranchProvider>
+      <NavigationContainer>
+        <Stack.Navigator
+          screenOptions={{
+            headerStyle: { backgroundColor: defaultTheme.card },
+            headerTintColor: defaultTheme.text,
+            headerTitleStyle: { fontWeight: '700' },
+            contentStyle: { backgroundColor: defaultTheme.background },
+          }}
+        >
+          <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Orders" component={OrdersScreen} options={{ title: 'Pedidos' }} />
+          <Stack.Screen name="Inventory" component={InventoryScreen} options={{ title: 'Estoque virtual' }} />
+          <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Configurações' }} />
+          <Stack.Screen name="Appearance" component={AppearanceScreen} options={{ title: 'Aparência' }} />
+          <Stack.Screen name="Franchise" component={FranchiseScreen} options={{ title: 'Indicadores' }} />
+        </Stack.Navigator>
+      </NavigationContainer>
+    </BranchProvider>
   );
 }
 

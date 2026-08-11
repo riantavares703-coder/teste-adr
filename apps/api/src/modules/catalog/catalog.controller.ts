@@ -35,6 +35,12 @@ export class CatalogController {
 
   // --- vitrine pública -------------------------------------------------------
 
+  @Get('public/:organizationSlug/branches')
+  @Public()
+  async branches(@Param('organizationSlug') organizationSlug: string) {
+    return this.catalog.listPublicBranches(organizationSlug);
+  }
+
   @Get('public/:organizationSlug/:branchSlug/menu')
   @Public()
   async menu(

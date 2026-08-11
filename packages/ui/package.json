@@ -4,13 +4,20 @@
   "private": true,
   "main": "./src/index.tsx",
   "types": "./src/index.tsx",
-  "exports": { ".": "./src/index.tsx" },
+  "exports": {
+    ".": "./src/index.tsx"
+  },
   "peerDependencies": {
     "react": "*",
-    "react-native": "*"
+    "react-native": "*",
+    "expo-linear-gradient": "*"
   },
   "devDependencies": {
     "@types/react": "~18.3.12",
     "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "@plataforma/domain": "workspace:*",
+    "@plataforma/client": "workspace:*"
   }
 }

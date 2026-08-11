@@ -25,10 +25,16 @@ apps/
 
 | Suíte | Testes | Como rodar |
 |---|---|---|
-| Domínio (unitário, sem I/O) | **72** | `pnpm --filter @plataforma/domain test` |
+| Domínio (unitário, sem I/O) | **102** | `pnpm --filter @plataforma/domain test` |
 | Carrinho e cliente HTTP | **13** | `pnpm --filter @plataforma/client test` |
-| API (integração, PostgreSQL real) | **99** | `pnpm db:start && pnpm --filter @plataforma/api test` |
-| **Total** | **184** | `pnpm test` |
+| API (integração, PostgreSQL real) | **137** | `pnpm db:start && pnpm --filter @plataforma/api test` |
+| **Total** | **252** | `pnpm test` |
+
+O Prompt 03 (camada visual, branding e indicadores de franquia) acrescentou 30 testes de domínio
+(`packages/domain/test/branding.test.ts` — contraste WCAG, fontes seguras, injeção de estilo) e 38 testes
+de API (`apps/api/test/branding-and-analytics.test.ts` — gravação de aparência, contraste no servidor,
+isolamento entre franquias na aparência e nos indicadores consolidados). Detalhes em
+[`docs/ARQUITETURA-DELTA.md`](docs/ARQUITETURA-DELTA.md#prompt-03--camada-visual-branding-e-multifranquia).
 
 Concorrência verificada por HTTP real, em paralelo, atravessando guard, RLS e transação:
 
