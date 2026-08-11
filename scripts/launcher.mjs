@@ -332,6 +332,7 @@ async function main() {
   ensureDatabase(binDir);
 
   const secrets = await ensureSecrets();
+  const lan = lanAddress();
   const env = {
     ...process.env,
     ...secrets,
@@ -339,6 +340,9 @@ async function main() {
     PORT: String(APIPORT),
     DATABASE_URL: `postgresql://postgres@localhost:${PGPORT}/${DBNAME}`,
     MEDIA_STORAGE_DIR: join(RUNTIME, 'media'),
+    // O servidor monta o link do QR code a partir daqui, para que o endereço
+    // impresso neste console e o do painel sejam sempre o mesmo.
+    PUBLIC_BASE_URL: `http://${lan ?? 'localhost'}:${APIPORT}`,
   };
 
   step('Atualizando o banco de dados');
@@ -365,11 +369,8 @@ async function main() {
     fail('o sistema não respondeu a tempo.', `Veja o detalhe em ${PG_LOG}.`);
   }
 
-  const lan = lanAddress();
   const adminUrl = `http://localhost:${APIPORT}/admin`;
-  const menuUrl = lan
-    ? `http://${lan}:${APIPORT}/demo/centro`
-    : `http://localhost:${APIPORT}/demo/centro`;
+  const menuUrl = `${env.PUBLIC_BASE_URL}/demo/centro`;
 
   console.log('\n=======================================');
   console.log('  Sistema no ar');

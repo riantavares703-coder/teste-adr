@@ -8,10 +8,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@plataforma/domain": "workspace:*",
-    "clsx": "^2.1.0"
+    "@plataforma/domain": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^18.3.1"
   },
   "devDependencies": {
+    "@types/react": "^18.3.12",
     "typescript": "^5.6.3"
   }
 }

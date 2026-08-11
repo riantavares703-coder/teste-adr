@@ -118,6 +118,16 @@ export interface BrandingSettings {
   coverUrl: string | null;
 }
 
+export interface ShareLink {
+  organizationSlug: string;
+  branchSlug: string;
+  /** URL que vai no QR code, já com o endereço de rede da máquina. */
+  menuUrl: string;
+  lanAddress: string | null;
+  /** Falso quando o endereço só funciona na própria máquina do operador. */
+  reachableFromPhones: boolean;
+}
+
 export interface AnalyticsSummary {
   periodDays: number;
   since: string;
@@ -392,6 +402,17 @@ export class ApiClient {
   }
 
   // --- operação --------------------------------------------------------------
+
+  /**
+   * Endereço do cardápio desta unidade, para o QR code do balcão.
+   *
+   * Resolvido no SERVIDOR de propósito: montar a URL a partir de
+   * `window.location` produziria "localhost", que é justamente o endereço que
+   * não funciona no celular do cliente.
+   */
+  getShareLink(branchId: string): Promise<ShareLink> {
+    return this.request('GET', `/v1/branches/${branchId}/share-link`);
+  }
 
   listBranchOrders(branchId: string, statuses?: OrderStatus[]): Promise<OrderDetail[]> {
     const query = statuses?.length ? `?status=${statuses.join(',')}` : '';

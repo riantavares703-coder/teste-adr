@@ -1,17 +1,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import '@plataforma/ui-web';
-import './store.css';
 import { App } from './App';
 
-/**
- * Sem `basename`: este app é servido em /:organizacao/:unidade, e o prefixo
- * varia por loja. As rotas declaram os dois segmentos explicitamente.
- */
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
+    {/* A API serve este SPA sob /admin, então o router precisa do mesmo prefixo. */}
+    <BrowserRouter basename="/admin">
       <App />
     </BrowserRouter>
   </React.StrictMode>,

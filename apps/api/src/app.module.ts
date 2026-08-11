@@ -18,6 +18,8 @@ import { BrandingController } from './modules/branding/branding.controller.js';
 import { BrandingService } from './modules/branding/branding.service.js';
 import { AnalyticsController } from './modules/analytics/analytics.controller.js';
 import { AnalyticsService } from './modules/analytics/analytics.service.js';
+import { StorefrontController } from './modules/storefront/storefront.controller.js';
+import { StorefrontService } from './modules/storefront/storefront.service.js';
 import { InventoryController } from './modules/inventory/inventory.controller.js';
 import { InventoryService } from './modules/inventory/inventory.service.js';
 import { OrderingController } from './modules/ordering/ordering.controller.js';
@@ -85,6 +87,7 @@ const pushProvider: Provider = {
     MediaController,
     BrandingController,
     AnalyticsController,
+    StorefrontController,
   ],
   providers: [
     Database,
@@ -99,6 +102,7 @@ const pushProvider: Provider = {
     CatalogService,
     BrandingService,
     AnalyticsService,
+    StorefrontService,
     InventoryService,
     PaymentsService,
     OrderingService,

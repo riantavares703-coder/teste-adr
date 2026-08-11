@@ -1,0 +1,270 @@
+/* Aparência dos componentes de ui-web. Cor sempre por variável do tema. */
+
+/* --- Botão ---------------------------------------------------------------- */
+
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  min-height: var(--touch-min);
+  padding: 0 var(--sp-5);
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.15s ease, opacity 0.15s ease;
+}
+
+.ui-btn:hover:not(:disabled) {
+  filter: brightness(0.94);
+}
+
+.ui-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ui-btn--full {
+  width: 100%;
+}
+
+.ui-btn--primary {
+  background: var(--c-primary);
+  color: var(--c-on-primary);
+}
+
+.ui-btn--secondary {
+  background: var(--c-card);
+  color: var(--c-text);
+  border-color: var(--c-border);
+}
+
+.ui-btn--ghost {
+  background: transparent;
+  color: var(--c-primary);
+}
+
+.ui-btn--danger {
+  background: var(--c-danger);
+  color: #fff;
+}
+
+/* --- Carregando ----------------------------------------------------------- */
+
+.ui-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: ui-spin 0.7s linear infinite;
+}
+
+.ui-spinner--lg {
+  width: 32px;
+  height: 32px;
+  border-width: 3px;
+  color: var(--c-primary);
+}
+
+@keyframes ui-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- Superfícies ---------------------------------------------------------- */
+
+.ui-card {
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-4);
+}
+
+.ui-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin: var(--sp-5) 0 var(--sp-3);
+}
+
+.ui-section-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.ui-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.ui-row:last-child {
+  border-bottom: none;
+}
+
+.ui-row__label {
+  color: var(--c-text);
+}
+
+.ui-row__value {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* --- Dados ---------------------------------------------------------------- */
+
+.ui-price {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-4);
+  min-width: 0;
+}
+
+.ui-stat__value {
+  font-size: 1.6rem;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-stat__label {
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--c-muted);
+}
+
+.ui-badge {
+  display: inline-block;
+  padding: 2px var(--sp-3);
+  border-radius: var(--radius-pill);
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid var(--c-border);
+  background: var(--c-card);
+  color: var(--c-text);
+}
+
+.ui-badge--info {
+  border-color: var(--c-primary);
+  color: var(--c-primary);
+}
+.ui-badge--success {
+  border-color: var(--c-success);
+  color: var(--c-success);
+}
+.ui-badge--warning {
+  border-color: var(--c-warning);
+  color: #8a5a00;
+}
+.ui-badge--danger {
+  border-color: var(--c-danger);
+  color: var(--c-danger);
+}
+
+.ui-notice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius-md);
+  border-left: 4px solid var(--c-border);
+  background: var(--c-card);
+  margin: var(--sp-3) 0;
+}
+
+.ui-notice--info {
+  border-left-color: var(--c-primary);
+}
+.ui-notice--success {
+  border-left-color: var(--c-success);
+}
+.ui-notice--warning {
+  border-left-color: var(--c-warning);
+}
+.ui-notice--danger {
+  border-left-color: var(--c-danger);
+}
+
+.ui-notice__title {
+  font-weight: 700;
+}
+
+/* --- Formulário ----------------------------------------------------------- */
+
+.ui-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin-bottom: var(--sp-4);
+}
+
+.ui-field label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.ui-input {
+  min-height: var(--touch-min);
+  padding: 0 var(--sp-3);
+  border: 1.5px solid var(--c-border);
+  border-radius: var(--radius-md);
+  background: var(--c-card);
+  width: 100%;
+}
+
+.ui-input--error {
+  border-color: var(--c-danger);
+}
+
+.ui-field__hint {
+  color: var(--c-muted);
+}
+
+.ui-field__error {
+  color: var(--c-danger);
+  font-weight: 600;
+}
+
+/* --- Estados -------------------------------------------------------------- */
+
+.ui-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  padding: var(--sp-7) var(--sp-4);
+  text-align: center;
+  color: var(--c-muted);
+}
+
+.ui-state h3 {
+  margin: 0;
+  color: var(--c-text);
+}
+
+.ui-state p {
+  margin: 0;
+  max-width: 42ch;
+}
+
+.ui-state__icon {
+  font-size: 2.5rem;
+  line-height: 1;
+}
