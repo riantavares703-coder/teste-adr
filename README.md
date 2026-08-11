@@ -3,10 +3,46 @@
 Aplicativo mobile (Android + iOS) para **clientes** e **operadores/administradores**, com arquitetura
 **multi-tenant** preparada desde o início para franquias com múltiplas unidades.
 
-> **Status deste repositório:** somente **arquitetura técnica**. Nenhuma tela, nenhum componente de UI e
-> nenhum código de aplicação foram implementados — por decisão explícita, a arquitetura vem antes.
-> Os únicos artefatos "executáveis" aqui são o **DDL do banco** e as **políticas de RLS**, que fazem parte
-> do modelo de dados solicitado.
+> **Status:** arquitetura técnica **+ núcleo funcional implementado**.
+> A arquitetura está em [`docs/`](docs/); o código, em [`apps/`](apps/) e [`packages/`](packages/).
+> Os desvios da arquitetura aprovada estão justificados em
+> [`docs/ARQUITETURA-DELTA.md`](docs/ARQUITETURA-DELTA.md).
+
+---
+
+## O que está implementado
+
+```
+packages/
+  domain/    regras puras: máquinas de estado, preço, disponibilidade, BR Code Pix
+  client/    cliente HTTP + carrinho, compartilhado pelos apps
+  ui/        design system (tokens + componentes), tematizável por franquia
+apps/
+  api/               NestJS + Drizzle + PostgreSQL (RLS)
+  mobile-customer/   React Native — CLIENTE
+  mobile-operator/   React Native — OPERADOR e ADMINISTRADOR (por permissão)
+```
+
+| Suíte | Testes | Como rodar |
+|---|---|---|
+| Domínio (unitário, sem I/O) | **72** | `pnpm --filter @plataforma/domain test` |
+| Carrinho e cliente HTTP | **13** | `pnpm --filter @plataforma/client test` |
+| API (integração, PostgreSQL real) | **99** | `pnpm db:start && pnpm --filter @plataforma/api test` |
+| **Total** | **184** | `pnpm test` |
+
+Concorrência verificada por HTTP real, em paralelo, atravessando guard, RLS e transação:
+
+| Cenário | Resultado |
+|---|---|
+| 40 clientes disputando **1 unidade** | **1 venda**, 39 recusas com `PRODUTO_INDISPONIVEL` |
+| 60 clientes disputando **10 unidades** | **10 vendas**, estoque final exato |
+| 60 pedidos simultâneos | 60 números amigáveis **distintos** |
+| Franquia B lendo pedido da A pelo UUID | **404** |
+
+Quatro defeitos foram encontrados pelos próprios testes e corrigidos: reserva inserida antes do pedido
+(violava FK sob concorrência), escopo de unidade aceitando qualquer `branchId` para usuário com escopo de
+organização, IDs em UUIDv4 contrariando o ADR-0010, e cadeia de hash da auditoria que nunca fechava porque
+`JSONB` normaliza a ordem das chaves.
 
 ---
 

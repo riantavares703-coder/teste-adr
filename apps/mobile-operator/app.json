@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "operator",
+    "slug": "plataforma-operator",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": { "supportsTablet": true, "bundleIdentifier": "com.plataforma.operator" },
+    "android": {
+      "package": "com.plataforma.operator",
+      "allowBackup": false
+    },
+    "plugins": ["expo-secure-store"],
+    "extra": { "apiBaseUrl": "http://10.0.2.2:3000" }
+  }
+}
