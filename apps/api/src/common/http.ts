@@ -43,6 +43,13 @@ export class ZodValidationPipe implements PipeTransform {
   }
 }
 
+function isHttpishError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const candidate = error as { status?: unknown; statusCode?: unknown };
+  const value = candidate.status ?? candidate.statusCode;
+  return typeof value === 'number' && value >= 400 && value < 600;
+}
+
 /** Erros no formato RFC 9457, sem stack trace nem detalhe de banco. */
 @Catch()
 @Injectable()
@@ -67,6 +74,19 @@ export class ProblemDetailsFilter implements ExceptionFilter {
         typeof payload === 'object' && payload !== null
           ? { ...(payload as Record<string, unknown>) }
           : { code: 'ERRO', title: String(payload) };
+    } else if (isHttpishError(exception)) {
+      // Erros do express (ex.: PayloadTooLargeError do body-parser) trazem o
+      // status na própria exceção. Sem isto, um upload grande viraria 500 —
+      // e um 500 esconde do cliente que o problema é dele, não nosso.
+      const e = exception as { status?: number; statusCode?: number };
+      status = e.status ?? e.statusCode ?? HttpStatus.BAD_REQUEST;
+      body = {
+        code: status === HttpStatus.PAYLOAD_TOO_LARGE ? 'ARQUIVO_GRANDE' : 'REQUISICAO_INVALIDA',
+        title:
+          status === HttpStatus.PAYLOAD_TOO_LARGE
+            ? 'Arquivo maior que o limite permitido'
+            : 'Requisição inválida',
+      };
     } else if (exception instanceof ZodError) {
       status = HttpStatus.BAD_REQUEST;
       body = { code: 'ENTRADA_INVALIDA', title: 'Dados inválidos' };

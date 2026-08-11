@@ -37,6 +37,23 @@ const REDACTED_KEYS = new Set([
   'authorization',
 ]);
 
+/**
+ * Serialização canônica: chaves ordenadas, recursivamente.
+ *
+ * JSON.stringify comum NÃO serve para hash: o PostgreSQL normaliza a ordem das
+ * chaves ao gravar JSONB, então o objeto relido tem ordem diferente do que foi
+ * gravado e o hash recalculado não bate — a cadeia acusaria adulteração onde
+ * não houve. Ordenar as chaves torna a serialização independente da ordem.
+ */
+export function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value ?? null);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
+}
+
 export function redact(value: unknown, depth = 0): unknown {
   if (depth > 6 || value === null || typeof value !== 'object') return value;
   if (Array.isArray(value)) return value.map((v) => redact(v, depth + 1));
@@ -61,6 +78,16 @@ export function redact(value: unknown, depth = 0): unknown {
 @Injectable()
 export class AuditService {
   async record(tx: Db, input: AuditInput): Promise<void> {
+    // Trava por organização, válida até o fim da transação.
+    //
+    // Sem ela, duas transações concorrentes da mesma organização leriam o MESMO
+    // prev_hash e criariam uma BIFURCAÇÃO na cadeia — que o verificador
+    // reportaria como adulteração, gerando alarme falso e, pior, escondendo
+    // adulteração real no ruído. A trava é curta e por tenant.
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${input.organizationId ?? 'platform'}))`,
+    );
+
     const prev = await tx
       .select({ hash: s.auditLogs.recordHash })
       .from(s.auditLogs)
@@ -69,13 +96,16 @@ export class AuditService {
           ? eq(s.auditLogs.organizationId, input.organizationId)
           : sql`organization_id IS NULL`,
       )
-      .orderBy(desc(s.auditLogs.createdAt))
+      // created_at é o instante de INÍCIO da transação: dois registros da mesma
+      // transação têm o mesmo valor. O desempate por id é estável porque os IDs
+      // são UUIDv7, ordenáveis no tempo (ADR-0010).
+      .orderBy(desc(s.auditLogs.createdAt), desc(s.auditLogs.id))
       .limit(1);
 
     const prevHash = prev[0]?.hash ?? null;
     const metadata = redact(input.metadata ?? {}) as Record<string, unknown>;
 
-    const canonical = JSON.stringify({
+    const canonical = canonicalJson({
       organizationId: input.organizationId,
       branchId: input.branchId ?? null,
       actorUserId: input.principal?.userId ?? null,
@@ -116,7 +146,7 @@ export class AuditService {
       .select()
       .from(s.auditLogs)
       .where(eq(s.auditLogs.organizationId, organizationId))
-      .orderBy(s.auditLogs.createdAt);
+      .orderBy(s.auditLogs.createdAt, s.auditLogs.id);
 
     let expectedPrev: Buffer | null = null;
     for (const row of rows) {
@@ -128,7 +158,7 @@ export class AuditService {
         return { ok: false, brokenAt: row.id };
       }
 
-      const canonical = JSON.stringify({
+      const canonical = canonicalJson({
         organizationId: row.organizationId,
         branchId: row.branchId,
         actorUserId: row.actorUserId,
