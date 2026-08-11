@@ -1,6 +1,5 @@
 @echo off
-REM Setup script for Windows - Instala dependências do projeto
-REM Usage: setup-windows.bat
+setlocal enabledelayedexpansion
 
 echo.
 echo ========================================
@@ -8,54 +7,54 @@ echo Plataforma Multi-Tenant - Setup Windows
 echo ========================================
 echo.
 
-REM Check Node.js
 echo Verificando Node.js...
-node --version >nul 2>&1
-if errorlevel 1 (
-    echo ❌ Node.js não encontrado. Instale em: https://nodejs.org
+where node >nul 2>nul
+if %errorlevel% neq 0 (
+    echo [ERRO] Node.js nao encontrado. Instale em: https://nodejs.org
+    echo.
     pause
     exit /b 1
 )
-echo ✓ Node.js instalado
+echo [OK] Node.js instalado
 
-REM Check npm
 echo Verificando npm...
-npm --version >nul 2>&1
-if errorlevel 1 (
-    echo ❌ npm não encontrado
+where npm >nul 2>nul
+if %errorlevel% neq 0 (
+    echo [ERRO] npm nao encontrado
+    echo.
     pause
     exit /b 1
 )
-echo ✓ npm instalado
+echo [OK] npm instalado
 
-REM Install pnpm globally
 echo.
 echo Instalando pnpm globalmente...
-npm install -g pnpm
-if errorlevel 1 (
-    echo ❌ Erro ao instalar pnpm
+call npm install -g pnpm
+if %errorlevel% neq 0 (
+    echo [ERRO] Falha ao instalar pnpm
+    echo.
     pause
     exit /b 1
 )
-echo ✓ pnpm instalado
+echo [OK] pnpm instalado
 
-REM Install project dependencies
 echo.
-echo Instalando dependências do projeto...
+echo Instalando dependencias do projeto (pode levar alguns minutos)...
 call pnpm install
-if errorlevel 1 (
-    echo ❌ Erro ao instalar dependências
+if %errorlevel% neq 0 (
+    echo [ERRO] Falha ao instalar dependencias
+    echo.
     pause
     exit /b 1
 )
-echo ✓ Dependências instaladas
+echo [OK] Dependencias instaladas
 
 echo.
 echo ========================================
-echo ✓ Setup concluído com sucesso!
+echo Setup concluido com sucesso!
 echo ========================================
 echo.
-echo Próximos passos:
+echo Proximos passos:
 echo   - Rodar testes: test-windows.bat
 echo   - Rodar app customer: run-customer-windows.bat
 echo   - Rodar app operator: run-operator-windows.bat
