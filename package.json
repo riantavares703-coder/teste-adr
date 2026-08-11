@@ -7,13 +7,14 @@
     "node": ">=20"
   },
   "scripts": {
+    "start": "node scripts/launcher.mjs",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "test:domain": "pnpm --filter @plataforma/domain test",
     "test:api": "pnpm --filter @plataforma/api test",
     "db:start": "./scripts/db-start.sh",
-    "db:stop": "./scripts/db-stop.sh",
     "db:migrate": "pnpm --filter @plataforma/api db:migrate",
+    "db:seed": "pnpm --filter @plataforma/api db:seed",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck"
   },

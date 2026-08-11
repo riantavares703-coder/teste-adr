@@ -1,6 +1,8 @@
 node_modules/
 dist/
 var/
+# Estado local do launcher: cluster do banco, segredos e mídia. Nunca versionar.
+runtime/
 *.log
 .env
 .env.*
