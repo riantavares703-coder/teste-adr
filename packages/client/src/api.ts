@@ -118,6 +118,16 @@ export interface BrandingSettings {
   coverUrl: string | null;
 }
 
+export interface ShareLink {
+  organizationSlug: string;
+  branchSlug: string;
+  /** URL que vai no QR code, já com o endereço de rede da máquina. */
+  menuUrl: string;
+  lanAddress: string | null;
+  /** Falso quando o endereço só funciona na própria máquina do operador. */
+  reachableFromPhones: boolean;
+}
+
 export interface AnalyticsSummary {
   periodDays: number;
   since: string;
@@ -315,6 +325,16 @@ export class ApiClient {
     return this.request('POST', '/v1/auth/otp/request', { body: { phone } });
   }
 
+  /**
+   * Sessão de convidado: nome e telefone, sem código de verificação.
+   * Usada pelo cliente que chegou pelo QR code do balcão.
+   */
+  async startGuestSession(input: { phone: string; fullName: string }): Promise<Session> {
+    const session = await this.request<Session>('POST', '/v1/auth/guest', { body: input });
+    await this.saveSession(session);
+    return session;
+  }
+
   async verifyOtp(input: { phone: string; code: string; fullName?: string }): Promise<Session> {
     const session = await this.request<Session>('POST', '/v1/auth/otp/verify', { body: input });
     await this.saveSession(session);
@@ -392,6 +412,17 @@ export class ApiClient {
   }
 
   // --- operação --------------------------------------------------------------
+
+  /**
+   * Endereço do cardápio desta unidade, para o QR code do balcão.
+   *
+   * Resolvido no SERVIDOR de propósito: montar a URL a partir de
+   * `window.location` produziria "localhost", que é justamente o endereço que
+   * não funciona no celular do cliente.
+   */
+  getShareLink(branchId: string): Promise<ShareLink> {
+    return this.request('GET', `/v1/branches/${branchId}/share-link`);
+  }
 
   listBranchOrders(branchId: string, statuses?: OrderStatus[]): Promise<OrderDetail[]> {
     const query = statuses?.length ? `?status=${statuses.join(',')}` : '';

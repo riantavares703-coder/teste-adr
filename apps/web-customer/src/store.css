@@ -1,0 +1,196 @@
+/* Layout do cardápio. Cor sempre por variável do tema da franquia. */
+
+.store {
+  max-width: 900px;
+  margin: 0 auto;
+  /* Espaço extra embaixo para a barra fixa não cobrir o último produto. */
+  padding: var(--sp-4) var(--sp-4) 96px;
+}
+
+.store__header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-5) var(--sp-4);
+  margin: calc(var(--sp-4) * -1) calc(var(--sp-4) * -1) var(--sp-4);
+  background: var(--brand-gradient);
+  color: var(--c-on-primary);
+}
+
+.store__header h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.store__header p {
+  margin: var(--sp-1) 0 0;
+  opacity: 0.9;
+}
+
+.store__logo {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+  background: var(--c-card);
+}
+
+.store__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-3);
+}
+
+/* Uma coluna no celular; duas a partir de telas médias. */
+@media (min-width: 640px) {
+  .store__grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.store__product {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.store__product--out {
+  opacity: 0.55;
+}
+
+.store__thumb {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+}
+
+.store__product-body {
+  min-width: 0;
+}
+
+.store__product-body h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.store__product-body p {
+  margin: var(--sp-1) 0;
+  color: var(--c-muted);
+  font-size: 0.9rem;
+}
+
+.store__product-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.store__add {
+  padding: 0 var(--sp-4);
+}
+
+.store__lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.store__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.store__line-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.store__line-body small {
+  color: var(--c-muted);
+}
+
+.store__qty {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.store__qty span {
+  min-width: 2ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.store__bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: var(--sp-3) var(--sp-4);
+  /* Respeita a área do gesto de home em iPhone. */
+  padding-bottom: calc(var(--sp-3) + env(safe-area-inset-bottom, 0px));
+  background: var(--c-card);
+  border-top: 1px solid var(--c-border);
+}
+
+.store__bar .ui-btn {
+  max-width: 900px;
+  margin: 0 auto;
+  gap: var(--sp-2);
+}
+
+.store__fieldset {
+  border: 1px solid var(--c-border);
+  margin: var(--sp-3) 0;
+}
+
+.store__fieldset legend {
+  font-weight: 700;
+  padding: 0 var(--sp-2);
+}
+
+/* Rótulo inteiro clicável: o alvo passa a ser a linha, não só o círculo. */
+.store__choice {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--touch-min);
+  cursor: pointer;
+}
+
+.store__choice input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--c-primary);
+}
+
+.store__status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+
+.store__number {
+  font-size: 1.8rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.store__hint {
+  color: var(--c-muted);
+  font-size: 0.9rem;
+}

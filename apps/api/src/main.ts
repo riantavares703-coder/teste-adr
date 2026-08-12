@@ -3,6 +3,9 @@ import { NestFactory } from '@nestjs/core';
 import { Logger, type INestApplication } from '@nestjs/common';
 import helmet from 'helmet';
 import express from 'express';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { AppModule } from './app.module.js';
 import { loadEnv } from './config/env.js';
 import { SchedulerService } from './modules/scheduler/scheduler.service.js';
@@ -17,7 +20,28 @@ export async function createApp(): Promise<INestApplication> {
 
   app.use(
     helmet({
-      contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } },
+      /**
+       * A API passou a servir também os dois SPAs (painel e cardápio), então
+       * `defaultSrc: 'none'` deixou de servir: ele bloquearia o próprio bundle
+       * da página e o cliente veria uma tela branca.
+       *
+       * A política continua fechada no que importa — nada de origem externa,
+       * nada de `unsafe-eval`, nenhum antepassado de frame — e libera apenas o
+       * necessário para uma página servida por este mesmo processo.
+       */
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          // React injeta estilo inline; sem isto a página renderiza sem CSS.
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          // `data:`/`blob:` cobrem o QR code gerado no próprio navegador.
+          imgSrc: ["'self'", 'data:', 'blob:'],
+          connectSrc: ["'self'", 'ws:', 'wss:'],
+          objectSrc: ["'none'"],
+          frameAncestors: ["'none'"],
+        },
+      },
       hsts: env.NODE_ENV === 'production' ? { maxAge: 63072000, includeSubDomains: true, preload: true } : false,
       referrerPolicy: { policy: 'no-referrer' },
     }),
@@ -53,7 +77,69 @@ export async function createApp(): Promise<INestApplication> {
 
   // Necessário para que req.ip reflita o cliente real atrás do proxy/CDN.
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
+  // Antes de o Nest registrar suas rotas — ver a explicação em mountWebApps.
+  mountWebApps(app);
   return app;
+}
+
+/**
+ * Serve as duas interfaces a partir DESTE processo.
+ *
+ * Motivo: o restaurante abre um programa só. Um servidor web separado seria
+ * mais uma porta para liberar no firewall, mais um processo para morrer sozinho
+ * e mais uma origem para o CORS — sem nenhum ganho numa instalação de balcão.
+ *
+ * Registrado ANTES das rotas do Nest, e não depois: o Nest instala um
+ * tratador final que responde 404 a tudo que suas rotas não reconhecem, então
+ * um middleware registrado depois dele nunca seria alcançado. A ordem inversa é
+ * segura porque este middleware ignora explicitamente os prefixos da API.
+ *
+ * Cada SPA tem um `base` próprio no Vite (`/admin/` e `/storefront/`) porque os
+ * dois gerariam `/assets/index-*.js` e um sobrescreveria o outro.
+ */
+export function mountWebApps(app: INestApplication): void {
+  const server = app.getHttpAdapter().getInstance();
+  const appsDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+  const logger = new Logger('WebApps');
+  const quiet = loadEnv().NODE_ENV === 'test';
+
+  const operatorDist = join(appsDir, 'web-operator', 'dist');
+  const customerDist = join(appsDir, 'web-customer', 'dist');
+
+  if (existsSync(operatorDist)) {
+    server.use('/admin', express.static(operatorDist));
+    // Fallback de SPA: recarregar /admin/pedidos precisa devolver o index.
+    server.get(/^\/admin(\/.*)?$/, (_req: express.Request, res: express.Response) => {
+      res.sendFile(join(operatorDist, 'index.html'));
+    });
+  } else if (!quiet) {
+    logger.warn('Painel do operador não compilado (apps/web-operator/dist ausente)');
+  }
+
+  if (existsSync(customerDist)) {
+    server.use('/storefront', express.static(customerDist));
+
+    // O cardápio mora em /:organizacao/:unidade e seus subcaminhos
+    // (/demo/centro, /demo/centro/carrinho, ...). Em vez de uma expressão que
+    // tente descrever todos, a regra é por exclusão: o que não é rota da API
+    // nem parece um arquivo é navegação do cardápio.
+    const RESERVED = ['/v1', '/admin', '/storefront'];
+    server.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+      if (req.method !== 'GET') return next();
+      if (RESERVED.some((prefix) => req.path === prefix || req.path.startsWith(`${prefix}/`))) {
+        return next();
+      }
+      // Um ponto no último segmento indica arquivo (favicon.ico), não rota.
+      if (req.path.split('/').pop()?.includes('.')) return next();
+      if (!req.accepts('html')) return next();
+      // Precisa de organização E unidade; "/" sozinho não identifica loja.
+      if (req.path.split('/').filter(Boolean).length < 2) return next();
+      return res.sendFile(join(customerDist, 'index.html'));
+    });
+  } else if (!quiet) {
+    logger.warn('Cardápio não compilado (apps/web-customer/dist ausente)');
+  }
 }
 
 async function bootstrap(): Promise<void> {

@@ -27,6 +27,21 @@ const OtpVerifySchema = z
   })
   .strict();
 
+/**
+ * Cliente de balcão: nome e telefone, sem código.
+ *
+ * O nome é obrigatório aqui (diferente do OTP, onde é opcional) porque é a
+ * ÚNICA coisa que o operador tem para chamar quem pediu — sem ele o pedido
+ * chega à fila sem dono.
+ */
+const GuestSchema = z
+  .object({
+    phone: z.string().regex(/^\+[1-9]\d{7,14}$/, 'Telefone em formato E.164'),
+    fullName: z.string().trim().min(2, 'Informe seu nome').max(120),
+    deviceId: z.string().max(200).optional(),
+  })
+  .strict();
+
 const RefreshSchema = z
   .object({ refreshToken: z.string().min(10).max(500), deviceId: z.string().max(200).optional() })
   .strict();
@@ -68,6 +83,22 @@ export class AuthController {
       fullName: body.fullName,
       deviceId: body.deviceId,
       ip: req.ip,
+    });
+  }
+
+  /** Cliente que chegou pelo QR code e não tem conta. */
+  @Post('guest')
+  @Public()
+  async guest(
+    @Body(new ZodValidationPipe(GuestSchema)) body: z.infer<typeof GuestSchema>,
+    @Req() req: { ip?: string; headers: Record<string, string | undefined> },
+  ) {
+    return this.auth.startGuestSession({
+      phoneE164: body.phone,
+      fullName: body.fullName,
+      deviceId: body.deviceId,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
     });
   }
 

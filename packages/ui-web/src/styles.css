@@ -1,0 +1,106 @@
+/*
+ * Base compartilhada pelos dois apps.
+ *
+ * Tudo que é cor vem de variável definida por `applyTheme`. Nenhum valor de
+ * marca é escrito aqui — este arquivo descreve FORMA (espaçamento, raio, foco,
+ * alvo de toque), não identidade visual.
+ */
+
+:root {
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  /* Piso de alvo de toque recomendado pela WCAG 2.1 (2.5.5). */
+  --touch-min: 44px;
+
+  /* Valores neutros para o caso de a página renderizar antes do tema chegar. */
+  --c-primary: #e11d48;
+  --c-on-primary: #ffffff;
+  --c-secondary: #0f172a;
+  --c-on-secondary: #ffffff;
+  --c-accent: #f59e0b;
+  --c-on-accent: #000000;
+  --c-text: #0f172a;
+  --c-muted: #777c87;
+  --c-bg: #f6f7f9;
+  --c-card: #ffffff;
+  --c-border: #e2e3e5;
+  --c-overlay: #0f172a8c;
+  --c-success: #10b981;
+  --c-warning: #f59e0b;
+  --c-danger: #ef4444;
+  --font-brand: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --brand-gradient: var(--c-primary);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-family: var(--font-brand);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Foco visível em TUDO que recebe foco. Removê-lo por estética quebra a
+ * navegação por teclado — que é a única disponível para parte dos usuários.
+ */
+:focus-visible {
+  outline: 3px solid var(--c-primary);
+  outline-offset: 2px;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* Respeita quem pediu menos movimento no sistema operacional. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Conteúdo lido por leitor de tela, invisível na tela. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

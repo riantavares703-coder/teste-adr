@@ -1,2 +1,5 @@
-export * from './theme';
-export * from './components';
+import './styles.css';
+import './components.css';
+
+export * from './theme.js';
+export * from './components.js';
