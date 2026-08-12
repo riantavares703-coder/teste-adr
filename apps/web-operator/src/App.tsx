@@ -3,6 +3,8 @@ import { SessionProvider, useSession } from './session';
 import { LoginPage } from './pages/LoginPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { SharePage } from './pages/SharePage';
+import { MenuEditorPage } from './pages/MenuEditorPage';
+import { StoreSettingsPage } from './pages/StoreSettingsPage';
 
 export function App() {
   return (
@@ -13,7 +15,7 @@ export function App() {
 }
 
 function Shell() {
-  const { profile, branch, branches, selectBranch, signOut } = useSession();
+  const { profile, branch, branches, selectBranch, signOut, can } = useSession();
 
   return (
     <div className="admin">
@@ -35,9 +37,13 @@ function Shell() {
           ) : null}
         </div>
 
+        {/* Só aparece o que o servidor concedeu. Esconder é conveniência de
+            tela; quem recusa a operação continua sendo a API. */}
         <nav className="admin__nav">
           <NavLink to="/pedidos">Pedidos</NavLink>
-          <NavLink to="/cardapio">Cardápio do cliente</NavLink>
+          {can('product:read') ? <NavLink to="/cardapio">Cardápio</NavLink> : null}
+          {can('settings:read') ? <NavLink to="/loja">Horário</NavLink> : null}
+          <NavLink to="/compartilhar">Compartilhar</NavLink>
         </nav>
 
         <div className="admin__user">
@@ -51,7 +57,9 @@ function Shell() {
       <main className="admin__main">
         <Routes>
           <Route path="/pedidos" element={<OrdersPage />} />
-          <Route path="/cardapio" element={<SharePage />} />
+          <Route path="/cardapio" element={<MenuEditorPage />} />
+          <Route path="/loja" element={<StoreSettingsPage />} />
+          <Route path="/compartilhar" element={<SharePage />} />
           {/* A fila é a tela de trabalho: é onde o operador deve cair. */}
           <Route path="*" element={<Navigate to="/pedidos" replace />} />
         </Routes>

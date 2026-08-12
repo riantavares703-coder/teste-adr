@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { uuidv7 } from '../../common/uuid.js';
 
 import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm';
-import { resolveAvailability } from '@plataforma/domain';
+import { openState, resolveAvailability, type BusinessHour } from '@plataforma/domain';
 import { themeOf } from '../branding/branding.service.js';
 import { Database, type Db } from '../../db/client.js';
 import * as s from '../../db/schema.js';
@@ -11,6 +11,15 @@ import { toTenantContext, type Principal } from '../../common/principal.js';
 import { AuditService } from '../audit/audit.service.js';
 import { OutboxService } from '../notifications/outbox.service.js';
 import { BranchAccessService } from '../tenancy/branch-access.service.js';
+
+/** O PostgreSQL devolve `time` como `HH:MM:SS`; o domínio fala `HH:MM`. */
+function toBusinessHour(row: { weekday: number; opensAt: string; closesAt: string }): BusinessHour {
+  return {
+    weekday: row.weekday as BusinessHour['weekday'],
+    opensAt: row.opensAt.slice(0, 5),
+    closesAt: row.closesAt.slice(0, 5),
+  };
+}
 
 export interface UpsertProductInput {
   name: string;
@@ -111,6 +120,15 @@ export class CatalogService {
     if (!found) throw notFound('UNIDADE_NAO_ENCONTRADA', 'Estabelecimento não encontrado');
     const { branch, branding, settings } = found;
 
+    const hours = await this.db.platform
+      .select({
+        weekday: s.businessHours.weekday,
+        opensAt: s.businessHours.opensAt,
+        closesAt: s.businessHours.closesAt,
+      })
+      .from(s.businessHours)
+      .where(eq(s.businessHours.branchId, branch.id));
+
     const categories = await this.db.platform
       .select()
       .from(s.categories)
@@ -155,6 +173,30 @@ export class CatalogService {
       imagesByProduct.set(img.productId, list);
     }
 
+    // Quais produtos têm opções a escolher. O cardápio precisa saber para
+    // mandar o cliente à tela do produto em vez de somar direto ao carrinho —
+    // um item com grupo obrigatório adicionado sem escolha seria recusado no
+    // checkout, depois de o cliente já achar que estava no carrinho.
+    const withOptions = new Set(
+      productIds.length > 0
+        ? (
+            await this.db.platform
+              .select({ productId: s.productModifierGroups.productId })
+              .from(s.productModifierGroups)
+              .innerJoin(
+                s.modifierGroups,
+                eq(s.modifierGroups.id, s.productModifierGroups.modifierGroupId),
+              )
+              .where(
+                and(
+                  inArray(s.productModifierGroups.productId, productIds),
+                  isNull(s.modifierGroups.deletedAt),
+                ),
+              )
+          ).map((row) => row.productId)
+        : [],
+    );
+
     const decorated = products.map(({ product, inventory }) => {
       const availability = inventory
         ? resolveAvailability({
@@ -176,6 +218,7 @@ export class CatalogService {
         categoryId: product.categoryId,
         isFeatured: product.isFeatured,
         allowsCustomerNotes: product.allowsCustomerNotes,
+        hasOptions: withOptions.has(product.id),
         preparationTimeMinutes: product.preparationTimeMinutes,
         imageUrl: primary ? `/v1/media/${primary.storageKey}` : null,
         thumbUrl: primary?.thumbStorageKey ? `/v1/media/${primary.thumbStorageKey}` : null,
@@ -213,6 +256,10 @@ export class CatalogService {
             enabledPaymentMethods: settings.enabledPaymentMethods,
           }
         : null,
+      // Estado de abertura resolvido AQUI, pelo mesmo cálculo que o checkout
+      // usa para recusar. O cardápio não decide se está aberto olhando o
+      // relógio do celular do cliente — que pode estar errado ou adiantado.
+      open: openState(hours.map(toBusinessHour)),
       categories: categories.map((c) => ({
         id: c.id,
         name: c.name,
@@ -357,6 +404,86 @@ export class CatalogService {
         metadata: { name: input.name },
       });
       return inserted[0]!;
+    });
+  }
+
+  async updateCategory(
+    principal: Principal,
+    branchId: string,
+    categoryId: string,
+    input: { name?: string; description?: string | null; position?: number; isActive?: boolean },
+  ) {
+    const organizationId = await this.branchAccess.assertAccess(principal, branchId);
+
+    return this.db.withTenant(toTenantContext(principal), async (tx) => {
+      const updated = await tx
+        .update(s.categories)
+        .set({ ...input, updatedAt: new Date() } as never)
+        .where(
+          and(
+            eq(s.categories.id, categoryId),
+            eq(s.categories.branchId, branchId),
+            isNull(s.categories.deletedAt),
+          ),
+        )
+        .returning();
+      if (!updated[0]) throw notFound('CATEGORIA_NAO_ENCONTRADA', 'Categoria não encontrada');
+
+      await this.audit.record(tx, {
+        principal,
+        organizationId,
+        branchId,
+        action: 'category.updated',
+        resourceType: 'category',
+        resourceId: categoryId,
+        metadata: { changed: Object.keys(input) },
+      });
+      return updated[0];
+    });
+  }
+
+  /**
+   * Remove a categoria, soltando os produtos dela.
+   *
+   * Os produtos NÃO são removidos junto: apagar o cardápio inteiro porque o
+   * lojista renomeou uma seção seria destrutivo e irreversível. Eles ficam sem
+   * categoria e reaparecem para ser reclassificados.
+   */
+  async deleteCategory(principal: Principal, branchId: string, categoryId: string): Promise<void> {
+    const organizationId = await this.branchAccess.assertAccess(principal, branchId);
+
+    await this.db.withTenant(toTenantContext(principal), async (tx) => {
+      const rows = await tx
+        .select({ id: s.categories.id })
+        .from(s.categories)
+        .where(
+          and(
+            eq(s.categories.id, categoryId),
+            eq(s.categories.branchId, branchId),
+            isNull(s.categories.deletedAt),
+          ),
+        )
+        .limit(1);
+      if (!rows[0]) throw notFound('CATEGORIA_NAO_ENCONTRADA', 'Categoria não encontrada');
+
+      await tx
+        .update(s.products)
+        .set({ categoryId: null, updatedAt: new Date() } as never)
+        .where(eq(s.products.categoryId, categoryId));
+
+      await tx
+        .update(s.categories)
+        .set({ deletedAt: new Date() } as never)
+        .where(eq(s.categories.id, categoryId));
+
+      await this.audit.record(tx, {
+        principal,
+        organizationId,
+        branchId,
+        action: 'category.deleted',
+        resourceType: 'category',
+        resourceId: categoryId,
+      });
     });
   }
 

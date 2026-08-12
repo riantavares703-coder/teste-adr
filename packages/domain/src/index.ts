@@ -16,3 +16,5 @@ export * from './availability.js';
 export * from './pix-brcode.js';
 export * from './order-number.js';
 export * from './branding.js';
+export * from './business-hours.js';
+export * from './modifiers.js';

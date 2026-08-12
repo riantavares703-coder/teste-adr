@@ -225,3 +225,287 @@
     display: none !important;
   }
 }
+
+/* --- Editor de cardápio --------------------------------------------------- */
+
+.editor__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.editor__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.editor__info {
+  min-width: 0;
+  flex: 1;
+}
+
+.editor__title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.editor__info p {
+  margin: var(--sp-1) 0;
+  color: var(--c-muted);
+  font-size: 0.9rem;
+}
+
+.editor__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+/*
+ * "Tem / Não tem" é o botão mais usado do balcão. Cor e símbolo juntos: cor
+ * sozinha não serve para quem não distingue verde de vermelho.
+ */
+.editor__toggle {
+  min-height: var(--touch-min);
+  min-width: 110px;
+  padding: 0 var(--sp-4);
+  border-radius: var(--radius-pill);
+  border: 2px solid;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.editor__toggle--on {
+  background: color-mix(in srgb, var(--c-success) 12%, transparent);
+  border-color: var(--c-success);
+  color: var(--c-success);
+}
+
+.editor__toggle--off {
+  background: color-mix(in srgb, var(--c-danger) 12%, transparent);
+  border-color: var(--c-danger);
+  color: var(--c-danger);
+}
+
+.editor__toggle:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* --- Barra de seções ------------------------------------------------------ */
+
+.catbar {
+  margin-bottom: var(--sp-4);
+}
+
+.catbar__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.catbar__group {
+  display: inline-flex;
+  align-items: center;
+}
+
+.catbar__chip {
+  min-height: var(--touch-min);
+  padding: 0 var(--sp-4);
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--c-border);
+  background: var(--c-card);
+  cursor: pointer;
+}
+
+.catbar__chip--on {
+  background: var(--c-primary);
+  color: var(--c-on-primary);
+  border-color: var(--c-primary);
+}
+
+.catbar__remove {
+  min-width: 32px;
+  min-height: 32px;
+  margin-left: 2px;
+  border: none;
+  background: transparent;
+  color: var(--c-muted);
+  font-size: 1.2rem;
+  cursor: pointer;
+  border-radius: var(--radius-pill);
+}
+
+.catbar__remove:hover {
+  color: var(--c-danger);
+}
+
+.catbar__new {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.catbar__new .ui-input {
+  flex: 1;
+  min-width: 200px;
+}
+
+/* --- Formulários ---------------------------------------------------------- */
+
+.form__check {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--touch-min);
+  cursor: pointer;
+}
+
+.form__check input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--c-primary);
+}
+
+.form__hint {
+  color: var(--c-muted);
+  font-size: 0.9rem;
+  margin: var(--sp-2) 0;
+}
+
+.form__footer {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+  flex-wrap: wrap;
+}
+
+.form__nested {
+  background: var(--c-bg);
+  margin: var(--sp-3) 0;
+}
+
+.form__fieldset {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  margin: var(--sp-3) 0;
+}
+
+.form__fieldset legend {
+  font-weight: 700;
+  padding: 0 var(--sp-2);
+}
+
+/* --- Grupos de opções ----------------------------------------------------- */
+
+.groups {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.groups__item {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  padding: var(--sp-3);
+}
+
+.groups__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.groups__rule {
+  color: var(--c-muted);
+  font-size: 0.85rem;
+  margin-right: auto;
+}
+
+.groups__options {
+  list-style: none;
+  margin: var(--sp-2) 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-1);
+}
+
+.groups__options li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-1) var(--sp-2);
+  background: var(--c-bg);
+  border-radius: var(--radius-sm);
+}
+
+.groups__delta {
+  margin-left: auto;
+  color: var(--c-muted);
+  font-size: 0.9rem;
+}
+
+.groups__add {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.groups__add .ui-input {
+  flex: 1;
+  min-width: 140px;
+}
+
+/* --- Horários ------------------------------------------------------------- */
+
+.hours__day {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--c-border);
+  flex-wrap: wrap;
+}
+
+.hours__label {
+  font-weight: 600;
+  min-width: 90px;
+  padding-top: var(--sp-2);
+}
+
+.hours__ranges {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  flex: 1;
+}
+
+.hours__range {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.hours__range .ui-input {
+  width: auto;
+  min-width: 120px;
+}
+
+.hours__closed {
+  color: var(--c-muted);
+  padding-top: var(--sp-2);
+}

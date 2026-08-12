@@ -14,10 +14,14 @@ import { OtpDeliveryService } from './modules/auth/otp-delivery.service.js';
 import { AuditService } from './modules/audit/audit.service.js';
 import { CatalogController } from './modules/catalog/catalog.controller.js';
 import { CatalogService } from './modules/catalog/catalog.service.js';
+import { ModifiersController } from './modules/catalog/modifiers.controller.js';
+import { ModifiersService } from './modules/catalog/modifiers.service.js';
 import { BrandingController } from './modules/branding/branding.controller.js';
 import { BrandingService } from './modules/branding/branding.service.js';
 import { AnalyticsController } from './modules/analytics/analytics.controller.js';
 import { AnalyticsService } from './modules/analytics/analytics.service.js';
+import { SettingsController } from './modules/settings/settings.controller.js';
+import { SettingsService } from './modules/settings/settings.service.js';
 import { StorefrontController } from './modules/storefront/storefront.controller.js';
 import { StorefrontService } from './modules/storefront/storefront.service.js';
 import { InventoryController } from './modules/inventory/inventory.controller.js';
@@ -81,6 +85,7 @@ const pushProvider: Provider = {
   controllers: [
     AuthController,
     CatalogController,
+    ModifiersController,
     InventoryController,
     OrderingController,
     PaymentsController,
@@ -88,6 +93,7 @@ const pushProvider: Provider = {
     BrandingController,
     AnalyticsController,
     StorefrontController,
+    SettingsController,
   ],
   providers: [
     Database,
@@ -100,9 +106,11 @@ const pushProvider: Provider = {
     AuthService,
     CryptoService,
     CatalogService,
+    ModifiersService,
     BrandingService,
     AnalyticsService,
     StorefrontService,
+    SettingsService,
     InventoryService,
     PaymentsService,
     OrderingService,

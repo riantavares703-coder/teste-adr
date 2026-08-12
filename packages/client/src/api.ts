@@ -1,7 +1,9 @@
 import type {
   AvailabilityView,
+  BusinessHour,
   FontToken,
   GradientStyle,
+  OpenState,
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
@@ -57,6 +59,8 @@ export interface MenuProduct {
   categoryId: string | null;
   isFeatured: boolean;
   allowsCustomerNotes: boolean;
+  /** Tem grupo de opções: exige passar pela tela do produto antes do carrinho. */
+  hasOptions: boolean;
   imageUrl: string | null;
   thumbUrl: string | null;
   availability: AvailabilityView;
@@ -118,6 +122,51 @@ export interface BrandingSettings {
   coverUrl: string | null;
 }
 
+/** Grupo de opções como o painel do administrador o edita. */
+export interface ModifierGroupAdmin {
+  id: string;
+  name: string;
+  minSelect: number;
+  maxSelect: number;
+  isRequired: boolean;
+  position: number;
+  options: Array<{
+    id: string;
+    name: string;
+    priceDeltaCents: number;
+    isAvailable: boolean;
+    position: number;
+  }>;
+}
+
+export interface ModifierGroupInput {
+  name: string;
+  minSelect?: number;
+  maxSelect?: number;
+  isRequired?: boolean;
+  position?: number;
+}
+
+export interface ModifierOptionInput {
+  name: string;
+  /** Negativo é legítimo: "sem queijo −R$ 2,00". */
+  priceDeltaCents?: number;
+  isAvailable?: boolean;
+  position?: number;
+}
+
+export interface StoreSettings {
+  branchId: string;
+  preparationTimeMinutes: number;
+  minOrderCents: number;
+  autoAcceptOrders: boolean;
+  paymentHoldMinutes: number;
+  cancellationWindowMinutes: number;
+  enabledPaymentMethods: PaymentMethod[];
+  hours: BusinessHour[];
+  open: OpenState;
+}
+
 export interface ShareLink {
   organizationSlug: string;
   branchSlug: string;
@@ -171,6 +220,8 @@ export interface Menu {
     preparationTimeMinutes: number;
     enabledPaymentMethods: PaymentMethod[];
   } | null;
+  /** Estado de abertura resolvido pelo servidor, nunca pelo relógio do cliente. */
+  open: OpenState;
   categories: MenuCategory[];
   featured: MenuProduct[];
   uncategorized: MenuProduct[];
@@ -215,6 +266,13 @@ export interface Order {
   customerNotes: string | null;
   placedAt: string;
   reservationExpiresAt: string | null;
+  /**
+   * Previsão de conclusão, calculada pelo servidor a partir do tempo de preparo
+   * da loja. É o que alimenta a barra de progresso — o app não estima nada.
+   */
+  estimatedReadyAt: string | null;
+  confirmedAt: string | null;
+  readyAt: string | null;
 }
 
 export interface PaymentView {
@@ -424,6 +482,109 @@ export class ApiClient {
     return this.request('GET', `/v1/branches/${branchId}/share-link`);
   }
 
+  // --- opções do produto (grupos e opções) -----------------------------------
+
+  listModifierGroups(branchId: string): Promise<ModifierGroupAdmin[]> {
+    return this.request('GET', `/v1/branches/${branchId}/modifier-groups`);
+  }
+
+  createModifierGroup(branchId: string, input: ModifierGroupInput): Promise<{ id: string }> {
+    return this.request('POST', `/v1/branches/${branchId}/modifier-groups`, { body: input });
+  }
+
+  updateModifierGroup(
+    branchId: string,
+    groupId: string,
+    input: Partial<ModifierGroupInput>,
+  ): Promise<{ id: string }> {
+    return this.request('PATCH', `/v1/branches/${branchId}/modifier-groups/${groupId}`, {
+      body: input,
+    });
+  }
+
+  deleteModifierGroup(branchId: string, groupId: string): Promise<{ deleted: boolean }> {
+    return this.request('DELETE', `/v1/branches/${branchId}/modifier-groups/${groupId}`);
+  }
+
+  createModifierOption(
+    branchId: string,
+    groupId: string,
+    input: ModifierOptionInput,
+  ): Promise<{ id: string }> {
+    return this.request('POST', `/v1/branches/${branchId}/modifier-groups/${groupId}/options`, {
+      body: input,
+    });
+  }
+
+  updateModifierOption(
+    branchId: string,
+    optionId: string,
+    input: Partial<ModifierOptionInput>,
+  ): Promise<{ id: string }> {
+    return this.request('PATCH', `/v1/branches/${branchId}/modifier-options/${optionId}`, {
+      body: input,
+    });
+  }
+
+  deleteModifierOption(branchId: string, optionId: string): Promise<{ deleted: boolean }> {
+    return this.request('DELETE', `/v1/branches/${branchId}/modifier-options/${optionId}`);
+  }
+
+  /** Define quais grupos o produto usa, na ordem informada. */
+  setProductModifierGroups(
+    branchId: string,
+    productId: string,
+    groupIds: string[],
+  ): Promise<{ ok: boolean }> {
+    return this.request('PUT', `/v1/branches/${branchId}/products/${productId}/modifier-groups`, {
+      body: { groupIds },
+    });
+  }
+
+  // --- categorias ------------------------------------------------------------
+
+  updateCategory(
+    branchId: string,
+    categoryId: string,
+    input: { name?: string; description?: string | null; position?: number; isActive?: boolean },
+  ): Promise<{ id: string }> {
+    return this.request('PATCH', `/v1/branches/${branchId}/categories/${categoryId}`, {
+      body: input,
+    });
+  }
+
+  deleteCategory(branchId: string, categoryId: string): Promise<{ deleted: boolean }> {
+    return this.request('DELETE', `/v1/branches/${branchId}/categories/${categoryId}`);
+  }
+
+  // --- configurações da loja -------------------------------------------------
+
+  getSettings(branchId: string): Promise<StoreSettings> {
+    return this.request('GET', `/v1/branches/${branchId}/settings`);
+  }
+
+  updateSettings(
+    branchId: string,
+    input: Partial<
+      Pick<
+        StoreSettings,
+        | 'preparationTimeMinutes'
+        | 'minOrderCents'
+        | 'autoAcceptOrders'
+        | 'paymentHoldMinutes'
+        | 'cancellationWindowMinutes'
+        | 'enabledPaymentMethods'
+      >
+    >,
+  ): Promise<StoreSettings> {
+    return this.request('PUT', `/v1/branches/${branchId}/settings`, { body: input });
+  }
+
+  /** Substitui o horário inteiro: a regra de não-sobreposição é de conjunto. */
+  replaceHours(branchId: string, hours: BusinessHour[]): Promise<StoreSettings> {
+    return this.request('PUT', `/v1/branches/${branchId}/hours`, { body: { hours } });
+  }
+
   listBranchOrders(branchId: string, statuses?: OrderStatus[]): Promise<OrderDetail[]> {
     const query = statuses?.length ? `?status=${statuses.join(',')}` : '';
     return this.request('GET', `/v1/branches/${branchId}/orders${query}`);
@@ -491,8 +652,12 @@ export class ApiClient {
     return this.request('PATCH', `/v1/branches/${branchId}/products/${productId}`, { body });
   }
 
+  deleteProduct(branchId: string, productId: string): Promise<{ deleted: boolean }> {
+    return this.request('DELETE', `/v1/branches/${branchId}/products/${productId}`);
+  }
+
   listCategories(branchId: string) {
-    return this.request<Array<{ id: string; name: string }>>(
+    return this.request<Array<{ id: string; name: string; position: number }>>(
       'GET',
       `/v1/branches/${branchId}/categories`,
     );

@@ -21,11 +21,11 @@
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
-import { mkdir, readFile, writeFile, access, rm } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, access, rm, stat } from 'node:fs/promises';
 import { constants, existsSync } from 'node:fs';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomBytes, generateKeyPairSync } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
@@ -68,35 +68,32 @@ function fail(message, hint) {
  * sem executar o resto — sem mensagem de erro nenhuma. Em Node o encadeamento é
  * explícito e o mesmo código roda nos três sistemas.
  */
+/**
+ * Comando de linha única sob o shell.
+ *
+ * `pnpm` e `npm` são scripts `.cmd` no Windows, e desde o Node 20 só são
+ * executáveis via shell. Passamos a linha INTEIRA como string, e não como lista
+ * de argumentos, porque a combinação `shell: true` + lista dispara o aviso de
+ * depreciação DEP0190 — os argumentos aqui são constantes do próprio programa,
+ * nada vem de entrada externa.
+ */
+function runShell(commandLine) {
+  return spawnSync(commandLine, { cwd: ROOT, stdio: 'inherit', shell: true });
+}
+
 function ensureDependencies() {
   if (existsSync(join(ROOT, 'node_modules', '.pnpm'))) return;
 
   step('Preparando o sistema pela primeira vez. Isso leva alguns minutos');
 
-  const pnpm = spawnSync(IS_WINDOWS ? 'pnpm.cmd' : 'pnpm', ['install'], {
-    cwd: ROOT,
-    stdio: 'inherit',
-    shell: IS_WINDOWS,
-  });
-  if (pnpm.status === 0) return;
+  if (runShell('pnpm install').status === 0) return;
 
   // pnpm ausente: instala e tenta de novo, uma vez.
   log('    Instalando o gerenciador de pacotes...');
-  const install = spawnSync(IS_WINDOWS ? 'npm.cmd' : 'npm', ['install', '-g', 'pnpm'], {
-    cwd: ROOT,
-    stdio: 'inherit',
-    shell: IS_WINDOWS,
-  });
-  if (install.status !== 0) {
+  if (runShell('npm install -g pnpm').status !== 0) {
     fail('não foi possível instalar o gerenciador de pacotes.', 'Verifique a conexão com a internet.');
   }
-
-  const retry = spawnSync(IS_WINDOWS ? 'pnpm.cmd' : 'pnpm', ['install'], {
-    cwd: ROOT,
-    stdio: 'inherit',
-    shell: IS_WINDOWS,
-  });
-  if (retry.status !== 0) fail('não foi possível preparar o sistema.');
+  if (runShell('pnpm install').status !== 0) fail('não foi possível preparar o sistema.');
 }
 
 /**
@@ -116,11 +113,7 @@ function ensureWebBuilds() {
 
   step('Preparando as telas');
   for (const target of targets) {
-    const result = spawnSync(
-      IS_WINDOWS ? 'pnpm.cmd' : 'pnpm',
-      ['--filter', target.name, 'build'],
-      { cwd: ROOT, stdio: 'inherit', shell: IS_WINDOWS },
-    );
+    const result = runShell(`pnpm --filter ${target.name} build`);
     if (result.status !== 0) fail(`não foi possível preparar as telas (${target.name}).`);
   }
 }
@@ -151,47 +144,122 @@ function findSystemPostgres() {
   return null;
 }
 
+/**
+ * Extrai o zip. Três estratégias, nesta ordem e por este motivo:
+ *
+ *  1. extrator próprio, em Node — mesmo comportamento nos três sistemas e
+ *     coberto por teste. É o primeiro porque é o único que eu consigo
+ *     verificar antes de entregar;
+ *  2. `tar` — bsdtar no Windows 10+, lê zip. No Linux é GNU tar e não lê,
+ *     então aqui ele só ajuda no Windows mesmo;
+ *  3. `Expand-Archive` do PowerShell — última reserva. Lento e propenso a
+ *     falhar em arquivos grandes; foi ele que falhou em campo.
+ *
+ * Devolve a lista de tentativas com o erro de cada uma: quando todas falham, o
+ * usuário vê o motivo real, e não apenas "não deu certo".
+ */
+async function extractArchive(zipPath, destination) {
+  const attempts = [];
+
+  try {
+    const { extractZip } = await import('./unzip.mjs');
+    const result = await extractZip(zipPath, destination);
+    if (result.files > 0) return { ok: true, attempts };
+    attempts.push({ tool: 'extrator interno', reason: 'o arquivo não continha arquivo nenhum' });
+  } catch (error) {
+    attempts.push({ tool: 'extrator interno', reason: error.message });
+  }
+
+  const tar = spawnSync('tar', ['-xf', zipPath, '-C', destination], { encoding: 'utf8' });
+  if (tar.status === 0) return { ok: true, attempts };
+  attempts.push({
+    tool: 'tar',
+    reason: tar.error ? tar.error.message : (tar.stderr || `código ${tar.status}`).trim(),
+  });
+
+  if (IS_WINDOWS) {
+    const ps = spawnSync(
+      'powershell',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        `$ProgressPreference='SilentlyContinue'; Expand-Archive -LiteralPath "${zipPath}" -DestinationPath "${destination}" -Force`,
+      ],
+      { encoding: 'utf8' },
+    );
+    if (ps.status === 0) return { ok: true, attempts };
+    attempts.push({
+      tool: 'PowerShell',
+      reason: ps.error ? ps.error.message : (ps.stderr || `código ${ps.status}`).trim(),
+    });
+  }
+
+  return { ok: false, attempts };
+}
+
 async function downloadPostgresForWindows() {
   const bundled = join(PGROOT, 'bin');
   if (existsSync(join(bundled, 'initdb.exe'))) return bundled;
 
-  step('Baixando o banco de dados (só na primeira execução, ~130 MB)');
-  log('    Isso leva alguns minutos. Nas próximas vezes começa direto.');
-
   const zipPath = join(tmpdir(), 'postgres-bin.zip');
-  const response = await fetch(PG_WINDOWS_URL).catch((error) => {
-    fail(
-      `não foi possível baixar o banco de dados: ${error.message}`,
-      'Verifique a conexão com a internet. O download só é necessário uma vez.',
-    );
-  });
-  if (!response?.ok) {
-    fail(
-      `o download do banco de dados falhou (HTTP ${response?.status}).`,
-      'Verifique a conexão com a internet e tente novamente.',
-    );
-  }
-
   await mkdir(RUNTIME, { recursive: true });
-  await pipeline(Readable.fromWeb(response.body), createWriteStream(zipPath));
+
+  // Um zip já baixado e íntegro é reaproveitado: se a extração falhou da vez
+  // anterior, não faz sentido baixar 130 MB de novo para tentar outra vez.
+  if (!existsSync(zipPath) || (await stat(zipPath)).size < 50 * 1024 * 1024) {
+    step('Baixando o banco de dados (só na primeira execução, ~130 MB)');
+    log('    Isso leva alguns minutos. Nas próximas vezes começa direto.');
+
+    const response = await fetch(PG_WINDOWS_URL).catch((error) => {
+      fail(
+        `não foi possível baixar o banco de dados: ${error.message}`,
+        'Verifique a conexão com a internet. O download só é necessário uma vez.',
+      );
+    });
+    if (!response?.ok) {
+      fail(
+        `o download do banco de dados falhou (HTTP ${response?.status}).`,
+        'Verifique a conexão com a internet e tente novamente.',
+      );
+    }
+
+    await pipeline(Readable.fromWeb(response.body), createWriteStream(zipPath));
+
+    // Um download interrompido produz um zip pequeno e inválido, e o erro
+    // apareceria só na extração, apontando para o lugar errado.
+    const expected = Number(response.headers.get('content-length') ?? 0);
+    const actual = (await stat(zipPath)).size;
+    if (expected > 0 && actual !== expected) {
+      await rm(zipPath, { force: true });
+      fail(
+        `o download veio incompleto (${actual} de ${expected} bytes).`,
+        'A conexão caiu no meio. Abra o programa de novo para tentar outra vez.',
+      );
+    }
+  }
 
   step('Instalando o banco de dados');
-  // Expand-Archive vem no Windows desde o PowerShell 5; não exige nada extra.
-  const unzip = spawnSync(
-    'powershell',
-    [
-      '-NoProfile',
-      '-Command',
-      `Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${RUNTIME}' -Force`,
-    ],
-    { stdio: 'inherit' },
-  );
-  if (unzip.status !== 0) fail('não foi possível descompactar o banco de dados.');
-  await rm(zipPath, { force: true });
+  const result = await extractArchive(zipPath, RUNTIME);
+  if (!result.ok) {
+    console.error('\nERRO: não foi possível descompactar o banco de dados.\n');
+    for (const attempt of result.attempts) {
+      console.error(`  ${attempt.tool}: ${attempt.reason}`);
+    }
+    console.error(`\n  Arquivo baixado: ${zipPath}`);
+    console.error('  Você pode descompactá-lo à mão e colocar a pasta "pgsql" dentro de:');
+    console.error(`  ${RUNTIME}`);
+    process.exit(1);
+  }
 
   if (!existsSync(join(bundled, 'initdb.exe'))) {
-    fail('o pacote do banco de dados veio incompleto.', 'Apague a pasta runtime/ e tente de novo.');
+    fail(
+      'o pacote do banco de dados veio incompleto.',
+      `Apague a pasta ${RUNTIME} e abra o programa de novo.`,
+    );
   }
+
+  await rm(zipPath, { force: true });
   return bundled;
 }
 
@@ -466,7 +534,14 @@ async function main() {
   }
 }
 
-const isDirectRun = process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1]}`;
+/**
+ * `pathToFileURL`, e não `file://` + caminho: no Windows `process.argv[1]` vem
+ * como `C:\...\launcher.mjs`, que concatenado vira `file://C:\...` e nunca é
+ * igual ao `file:///C:/.../launcher.mjs` real. A comparação ingênua funciona no
+ * Linux e falha calada no Windows — o programa terminava sem imprimir nada.
+ */
+const isDirectRun =
+  process.argv[1] !== undefined && pathToFileURL(process.argv[1]).href === import.meta.url;
 if (isDirectRun) {
   main().catch((error) => {
     console.error(error);

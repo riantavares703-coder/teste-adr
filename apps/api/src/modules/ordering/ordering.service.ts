@@ -12,6 +12,11 @@ import {
   type FulfillmentType,
   type OrderStatus,
   type PaymentMethod,
+  openState,
+  describeOpenState,
+  validateModifierSelection,
+  type BusinessHour,
+  type ModifierRule,
 } from '@plataforma/domain';
 import { Database, type Db } from '../../db/client.js';
 import * as s from '../../db/schema.js';
@@ -191,6 +196,30 @@ export class OrderingService {
     if (branch.status !== 'ACTIVE') {
       throw conflict('LOJA_FECHADA', 'A unidade não está aceitando pedidos no momento');
     }
+
+    // Horário de funcionamento. O cardápio já avisa que está fechado, mas quem
+    // RECUSA é aqui: o cliente pode ter deixado a página aberta desde antes de
+    // fechar, ou chamar a API direto. Sem horário cadastrado, a loja é
+    // considerada aberta (ver `openState`).
+    const hours = await tx
+      .select({
+        weekday: s.businessHours.weekday,
+        opensAt: s.businessHours.opensAt,
+        closesAt: s.businessHours.closesAt,
+      })
+      .from(s.businessHours)
+      .where(eq(s.businessHours.branchId, branch.id));
+
+    const open = openState(
+      hours.map((h) => ({
+        weekday: h.weekday as BusinessHour['weekday'],
+        opensAt: h.opensAt.slice(0, 5),
+        closesAt: h.closesAt.slice(0, 5),
+      })),
+    );
+    if (!open.isOpen) {
+      throw conflict('LOJA_FECHADA', describeOpenState(open));
+    }
     if (input.fulfillment === 'DELIVERY' && !branch.acceptsDelivery) {
       throw unprocessable('ENTREGA_INDISPONIVEL', 'Esta unidade não faz entrega');
     }
@@ -277,6 +306,74 @@ export class OrderingService {
             productId: item.productId,
           });
         }
+      }
+    }
+
+    /*
+     * REGRA DO GRUPO — obrigatório, mínimo e máximo.
+     *
+     * O laço acima confere cada adicional ENVIADO; esta parte confere o que
+     * NÃO foi enviado. Sem ela, um pedido que simplesmente omite o grupo
+     * obrigatório passava: a tela impedia, mas uma chamada direta à API não.
+     *
+     * A regra é a mesma função que a tela usa (`validateModifierSelection`),
+     * para que a explicação ao cliente e a recusa do servidor não divirjam.
+     */
+    const ruleRows = await tx
+      .select({
+        productId: s.productModifierGroups.productId,
+        groupId: s.modifierGroups.id,
+        groupName: s.modifierGroups.name,
+        minSelect: s.modifierGroups.minSelect,
+        maxSelect: s.modifierGroups.maxSelect,
+        isRequired: s.modifierGroups.isRequired,
+        optionId: s.modifierOptions.id,
+      })
+      .from(s.productModifierGroups)
+      .innerJoin(
+        s.modifierGroups,
+        eq(s.modifierGroups.id, s.productModifierGroups.modifierGroupId),
+      )
+      .leftJoin(
+        s.modifierOptions,
+        and(
+          eq(s.modifierOptions.modifierGroupId, s.modifierGroups.id),
+          eq(s.modifierOptions.isAvailable, true),
+          isNull(s.modifierOptions.deletedAt),
+        ),
+      )
+      .where(
+        and(
+          inArray(s.productModifierGroups.productId, productIds),
+          isNull(s.modifierGroups.deletedAt),
+        ),
+      );
+
+    const rulesByProduct = new Map<string, Map<string, ModifierRule>>();
+    for (const row of ruleRows) {
+      if (!rulesByProduct.has(row.productId)) rulesByProduct.set(row.productId, new Map());
+      const groups = rulesByProduct.get(row.productId)!;
+      const existing = groups.get(row.groupId);
+      if (existing) {
+        if (row.optionId) (existing.optionIds as string[]).push(row.optionId);
+      } else {
+        groups.set(row.groupId, {
+          id: row.groupId,
+          name: row.groupName,
+          minSelect: row.minSelect,
+          maxSelect: row.maxSelect,
+          isRequired: row.isRequired,
+          optionIds: row.optionId ? [row.optionId] : [],
+        });
+      }
+    }
+
+    for (const item of input.items) {
+      const groups = rulesByProduct.get(item.productId);
+      if (!groups || groups.size === 0) continue;
+      const check = validateModifierSelection([...groups.values()], item.optionIds ?? []);
+      if (!check.ok) {
+        throw unprocessable('ESCOLHA_INVALIDA', check.message, { productId: item.productId });
       }
     }
 

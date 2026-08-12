@@ -5,7 +5,7 @@ import helmet from 'helmet';
 import express from 'express';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { AppModule } from './app.module.js';
 import { loadEnv } from './config/env.js';
 import { SchedulerService } from './modules/scheduler/scheduler.service.js';
@@ -150,7 +150,10 @@ async function bootstrap(): Promise<void> {
   new Logger('Bootstrap').log(`API ouvindo na porta ${env.PORT}`);
 }
 
-const isDirectRun = process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1]}`;
+// pathToFileURL: no Windows, `file://` + `C:\...` nunca casa com a URL real do
+// módulo, e a API subiria sem nunca chamar bootstrap().
+const isDirectRun =
+  process.argv[1] !== undefined && pathToFileURL(process.argv[1]).href === import.meta.url;
 if (isDirectRun) {
   bootstrap().catch((error) => {
     console.error(error);

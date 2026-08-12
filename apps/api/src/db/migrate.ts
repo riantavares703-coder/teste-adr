@@ -1,6 +1,6 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import pg from 'pg';
 
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), 'migrations');
@@ -51,8 +51,10 @@ export async function runMigrations(connectionString: string): Promise<string[]>
   return applied;
 }
 
+// pathToFileURL: no Windows a comparação ingênua com `file://` + caminho nunca
+// casa, e o migrador sairia sem aplicar migração nenhuma, em silêncio.
 const isDirectRun =
-  process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1]}`;
+  process.argv[1] !== undefined && pathToFileURL(process.argv[1]).href === import.meta.url;
 
 if (isDirectRun) {
   const url = process.env.DATABASE_URL;
