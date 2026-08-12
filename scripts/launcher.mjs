@@ -57,6 +57,75 @@ function fail(message, hint) {
 }
 
 // ---------------------------------------------------------------------------
+// Dependências
+// ---------------------------------------------------------------------------
+
+/**
+ * Instala as dependências na primeira execução.
+ *
+ * Mora aqui, e não no .bat, por uma razão concreta: no Windows, `pnpm` é um
+ * script `.cmd`, e chamá-lo de dentro de um bloco de batch encerrava o arquivo
+ * sem executar o resto — sem mensagem de erro nenhuma. Em Node o encadeamento é
+ * explícito e o mesmo código roda nos três sistemas.
+ */
+function ensureDependencies() {
+  if (existsSync(join(ROOT, 'node_modules', '.pnpm'))) return;
+
+  step('Preparando o sistema pela primeira vez. Isso leva alguns minutos');
+
+  const pnpm = spawnSync(IS_WINDOWS ? 'pnpm.cmd' : 'pnpm', ['install'], {
+    cwd: ROOT,
+    stdio: 'inherit',
+    shell: IS_WINDOWS,
+  });
+  if (pnpm.status === 0) return;
+
+  // pnpm ausente: instala e tenta de novo, uma vez.
+  log('    Instalando o gerenciador de pacotes...');
+  const install = spawnSync(IS_WINDOWS ? 'npm.cmd' : 'npm', ['install', '-g', 'pnpm'], {
+    cwd: ROOT,
+    stdio: 'inherit',
+    shell: IS_WINDOWS,
+  });
+  if (install.status !== 0) {
+    fail('não foi possível instalar o gerenciador de pacotes.', 'Verifique a conexão com a internet.');
+  }
+
+  const retry = spawnSync(IS_WINDOWS ? 'pnpm.cmd' : 'pnpm', ['install'], {
+    cwd: ROOT,
+    stdio: 'inherit',
+    shell: IS_WINDOWS,
+  });
+  if (retry.status !== 0) fail('não foi possível preparar o sistema.');
+}
+
+/**
+ * Compila o painel e o cardápio se ainda não estiverem compilados.
+ *
+ * Os `dist/` não são versionados, então num clone limpo eles não existem — e
+ * sem eles a API sobe normalmente mas /admin devolve nada. Compilar aqui é o
+ * que faz o primeiro clique terminar numa tela em vez de numa página em branco.
+ */
+function ensureWebBuilds() {
+  const targets = [
+    { name: '@plataforma/web-customer', dist: join(ROOT, 'apps', 'web-customer', 'dist') },
+    { name: '@plataforma/web-operator', dist: join(ROOT, 'apps', 'web-operator', 'dist') },
+  ].filter((target) => !existsSync(join(target.dist, 'index.html')));
+
+  if (targets.length === 0) return;
+
+  step('Preparando as telas');
+  for (const target of targets) {
+    const result = spawnSync(
+      IS_WINDOWS ? 'pnpm.cmd' : 'pnpm',
+      ['--filter', target.name, 'build'],
+      { cwd: ROOT, stdio: 'inherit', shell: IS_WINDOWS },
+    );
+    if (result.status !== 0) fail(`não foi possível preparar as telas (${target.name}).`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // PostgreSQL
 // ---------------------------------------------------------------------------
 
@@ -313,6 +382,9 @@ async function main() {
   console.log('\n=======================================');
   console.log('  Plataforma de Pedidos');
   console.log('=======================================');
+
+  ensureDependencies();
+  ensureWebBuilds();
 
   const binDir = await ensurePostgresBinaries();
   await ensureCluster(binDir);
