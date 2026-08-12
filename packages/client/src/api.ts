@@ -356,6 +356,17 @@ export class ApiClient {
     this.accessToken = token;
   }
 
+  /**
+   * Token atual, para o handshake do WebSocket.
+   *
+   * Getter, e não cópia guardada por quem usa: o token é curto e é renovado por
+   * dentro do cliente. Uma cópia ficaria vencida na primeira reconexão, e o
+   * socket seria recusado exatamente quando mais precisa voltar.
+   */
+  get currentAccessToken(): string | null {
+    return this.accessToken;
+  }
+
   async saveSession(session: Session): Promise<void> {
     this.accessToken = session.accessToken;
     await this.storage.setRefreshToken(session.refreshToken);

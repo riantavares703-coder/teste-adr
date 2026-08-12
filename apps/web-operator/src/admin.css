@@ -509,3 +509,251 @@
   color: var(--c-muted);
   padding-top: var(--sp-2);
 }
+
+/* --- Painel de pedidos (estilo cozinha) ----------------------------------- */
+
+.board__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+  flex-wrap: wrap;
+}
+
+.board__count {
+  color: var(--c-muted);
+  font-weight: var(--weight-semibold);
+}
+
+/* Indicador de conexão ao vivo: o operador precisa saber se a fila que está
+   vendo ainda está viva, ou se congelou por queda de rede. */
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--c-muted);
+}
+
+.live__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.live--conectado {
+  color: var(--c-success);
+}
+
+.live--conectado .live__dot {
+  animation: ui-pulse-ring 2.4s var(--ease-out) infinite;
+  box-shadow: 0 0 0 0 currentColor;
+}
+
+.live--desconectado {
+  color: var(--c-danger);
+}
+
+.board {
+  display: grid;
+  gap: var(--sp-4);
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+
+/* Uma coluna por etapa a partir do tablet; no celular vira lista única. */
+@media (min-width: 900px) {
+  .board {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.board__col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.board__colhead {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  position: sticky;
+  top: 72px;
+  z-index: var(--z-sticky);
+  padding: var(--sp-2) 0;
+  background: var(--c-bg);
+}
+
+.board__colhead h2 {
+  font-size: var(--text-base);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--c-muted);
+}
+
+.board__pill {
+  min-width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0 var(--sp-2);
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+}
+
+.board__empty {
+  color: var(--c-border);
+  text-align: center;
+  padding: var(--sp-5) 0;
+}
+
+/* --- Comanda -------------------------------------------------------------- */
+
+.ticket {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border-radius: var(--radius-lg);
+  background: var(--c-card);
+  box-shadow: var(--shadow-sm);
+  /* Faixa lateral de urgência: percebe-se de longe, sem ler o relógio. */
+  border-left: 5px solid var(--c-border);
+  transition: box-shadow var(--dur-base) var(--ease-out);
+}
+
+.ticket--warn {
+  border-left-color: var(--c-warning);
+}
+
+.ticket--late {
+  border-left-color: var(--c-danger);
+  box-shadow: var(--shadow-md);
+}
+
+/* Pedido recém-chegado: entra deslizando e pulsa até o operador notar. */
+.ticket--new {
+  animation:
+    ui-fade-up var(--dur-slow) var(--ease-out),
+    ticket-attention 1.6s var(--ease-out) 3;
+}
+
+@keyframes ticket-attention {
+  0%,
+  100% {
+    box-shadow: var(--shadow-sm);
+  }
+  50% {
+    box-shadow: 0 0 0 4px var(--tint-primary), var(--shadow-md);
+  }
+}
+
+.ticket__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.ticket__number {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-black);
+  letter-spacing: var(--tracking-tight);
+}
+
+.ticket__age {
+  font-weight: var(--weight-semibold);
+  color: var(--c-muted);
+}
+
+.ticket__age--warn {
+  color: var(--c-warning);
+}
+
+.ticket__age--late {
+  color: var(--c-danger);
+  font-weight: var(--weight-black);
+}
+
+.ticket__tags {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.ticket__items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-1);
+}
+
+.ticket__items li {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.ticket__qty {
+  font-weight: var(--weight-bold);
+  color: var(--c-primary);
+  min-width: 28px;
+}
+
+.ticket__note {
+  color: var(--c-warning);
+  font-size: var(--text-sm);
+  font-style: normal;
+  font-weight: var(--weight-semibold);
+}
+
+.ticket__obs {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-sm);
+  background: var(--tint-warning);
+  font-size: var(--text-sm);
+}
+
+.ticket__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--c-border);
+}
+
+.ticket__actions {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Cancelar existe, mas não disputa atenção com o avanço. */
+.ticket__abort {
+  min-height: var(--touch-min);
+  padding: 0 var(--sp-3);
+  border: none;
+  background: transparent;
+  color: var(--c-muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.ticket__abort:hover:not(:disabled) {
+  background: var(--tint-danger);
+  color: var(--c-danger);
+}

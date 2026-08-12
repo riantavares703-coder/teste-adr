@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { OrderDetail } from '@plataforma/client';
-import { AsyncBoundary, Badge, Price, Row, type Tone } from '@plataforma/ui-web';
+import { AsyncBoundary, Badge, Price, Row, useRealtime, type Tone } from '@plataforma/ui-web';
 import { useStore } from '../store-context';
 
 /**
@@ -117,14 +117,29 @@ export function OrderPage() {
     void load();
   }, [load]);
 
-  // Consulta periódica em vez de WebSocket: são poucos clientes por loja e o
-  // custo é irrelevante, mas uma conexão persistente a mais teria de sobreviver
-  // a tela bloqueada, troca de rede e aba em segundo plano.
+  /*
+   * Tempo real: o cliente vê "saiu para entrega" no instante em que o operador
+   * toca o botão, não até 15 segundos depois.
+   *
+   * O evento serve de GATILHO, não de fonte: em vez de aplicar o payload na
+   * tela, recarregamos o pedido. Assim existe uma única forma de montar esta
+   * tela, e uma mensagem fora de ordem ou incompleta não pinta um estado que o
+   * servidor não tem.
+   */
+  const connection = useRealtime(
+    () => api.currentAccessToken,
+    order && !FINAL.has(order.order.status) ? { orderId: order.order.id } : {},
+    () => void load(),
+  );
+
+  // Rede de segurança, bem mais espaçada que antes: se o socket cair no meio do
+  // preparo, a tela não pode congelar em silêncio.
   useEffect(() => {
     if (!order || FINAL.has(order.order.status)) return;
-    const timer = setInterval(() => void load(), 15_000);
+    const period = connection === 'conectado' ? 60_000 : 12_000;
+    const timer = setInterval(() => void load(), period);
     return () => clearInterval(timer);
-  }, [order, load]);
+  }, [order, load, connection]);
 
   return (
     <main className="store">
