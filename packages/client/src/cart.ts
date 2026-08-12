@@ -1,4 +1,4 @@
-import { priceOrder, type PricingResult } from '@plataforma/domain';
+import { priceOrder, validateModifierSelection, type PricingResult } from '@plataforma/domain';
 import type { MenuProduct, ModifierGroup } from './api.js';
 
 /**
@@ -150,20 +150,29 @@ export function toOrderItems(cart: CartState) {
 }
 
 /** Valida os grupos obrigatórios antes de deixar adicionar ao carrinho. */
+/**
+ * Delega ao domínio de propósito.
+ *
+ * A regra que vale é a que o checkout aplica no servidor; ter uma segunda cópia
+ * aqui só criaria a chance de a tela liberar o que a API recusa (ou o
+ * contrário). Esta função existe apenas para adaptar o formato do cardápio ao
+ * do domínio.
+ */
 export function validateSelection(
   groups: ModifierGroup[],
   selectedIds: string[],
 ): { ok: true } | { ok: false; message: string } {
-  for (const group of groups) {
-    const count = group.options.filter((o) => selectedIds.includes(o.id)).length;
-    if (group.isRequired && count < Math.max(1, group.minSelect)) {
-      return { ok: false, message: `Escolha ao menos ${Math.max(1, group.minSelect)} em "${group.name}"` };
-    }
-    if (count > group.maxSelect) {
-      return { ok: false, message: `"${group.name}" aceita no máximo ${group.maxSelect}` };
-    }
-  }
-  return { ok: true };
+  return validateModifierSelection(
+    groups.map((group) => ({
+      id: group.id,
+      name: group.name,
+      minSelect: group.minSelect,
+      maxSelect: group.maxSelect,
+      isRequired: group.isRequired,
+      optionIds: group.options.map((option) => option.id),
+    })),
+    selectedIds,
+  );
 }
 
 function clamp(quantity: number, max: number | null): number {

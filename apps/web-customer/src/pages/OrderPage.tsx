@@ -38,6 +38,61 @@ const STATUS_TONE: Record<string, Tone> = {
 /** Estados finais: parar de perguntar ao servidor o que não muda mais. */
 const FINAL = new Set(['DELIVERED', 'PICKED_UP', 'CANCELLED', 'REJECTED', 'EXPIRED']);
 
+/** Estados em que o preparo está de fato correndo. */
+const PREPARING = new Set(['CONFIRMED', 'PREPARING']);
+
+/**
+ * BARRA DE PREPARO.
+ *
+ * A previsão vem do servidor (`estimatedReadyAt`, derivada do tempo de preparo
+ * que a loja cadastrou). O app só desenha — não estima nada, nem consulta o
+ * relógio para decidir se está pronto: quem diz que ficou pronto é o operador,
+ * mudando o status.
+ *
+ * Por isso a barra PARA em 95% em vez de completar sozinha. Chegar a 100% e o
+ * pedido continuar "em preparo" seria uma promessa que a tela não pode cumprir.
+ */
+function PreparationBar({ order }: { order: OrderDetail['order'] }) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!PREPARING.has(order.status)) return;
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, [order.status]);
+
+  if (!PREPARING.has(order.status) || !order.estimatedReadyAt) return null;
+
+  const start = new Date(order.confirmedAt ?? order.placedAt).getTime();
+  const end = new Date(order.estimatedReadyAt).getTime();
+  const total = end - start;
+  if (total <= 0) return null;
+
+  const elapsed = Math.max(0, now - start);
+  const percent = Math.min(95, Math.round((elapsed / total) * 100));
+  const remaining = Math.max(0, Math.ceil((end - now) / 60_000));
+
+  return (
+    <div className="prep">
+      <div
+        className="prep__track"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+        aria-label="Progresso do preparo"
+      >
+        <div className="prep__fill" style={{ width: `${percent}%` }} />
+      </div>
+      <small>
+        {remaining > 0
+          ? `Previsão: pronto em cerca de ${remaining} min`
+          : 'Deve ficar pronto a qualquer momento'}
+      </small>
+    </div>
+  );
+}
+
 export function OrderPage() {
   const { orderId } = useParams();
   const { api } = useStore();
@@ -81,6 +136,8 @@ export function OrderPage() {
               <Badge tone={STATUS_TONE[order.order.status] ?? 'info'}>
                 {STATUS_LABEL[order.order.status] ?? order.order.status}
               </Badge>
+
+              <PreparationBar order={order.order} />
               {order.payment && order.payment.status !== 'CONFIRMED' ? (
                 <small>
                   Pagamento:{' '}

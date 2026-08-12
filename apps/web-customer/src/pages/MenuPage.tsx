@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { MenuProduct } from '@plataforma/client';
+import { describeOpenState } from '@plataforma/domain';
 import { Badge, Price } from '@plataforma/ui-web';
 import { useStore } from '../store-context';
 import { useCart } from '../cart-context';
@@ -29,10 +30,17 @@ export function MenuPage() {
         </div>
       </header>
 
-      {menu.branch.status !== 'ACTIVE' ? (
+      {/* Fechada por horário OU desativada pelo lojista: o cliente precisa
+          saber antes de montar o carrinho, não no fim do checkout. */}
+      {!menu.open.isOpen || menu.branch.status !== 'ACTIVE' ? (
         <div className="ui-notice ui-notice--warning" role="alert">
           <strong className="ui-notice__title">Loja fechada</strong>
-          <div>Você pode ver o cardápio, mas não é possível pedir agora.</div>
+          <div>
+            {menu.branch.status !== 'ACTIVE'
+              ? 'A loja não está aceitando pedidos no momento.'
+              : describeOpenState(menu.open)}{' '}
+            Você pode ver o cardápio, mas não dá para pedir agora.
+          </div>
         </div>
       ) : null}
 
@@ -88,26 +96,39 @@ function ProductCard({
         <Price cents={product.priceCents} />
       </div>
 
-      <button
-        type="button"
-        className="ui-btn ui-btn--primary store__add"
-        disabled={!available}
-        // Rótulo com o nome do produto: numa lista, "Adicionar" repetido
-        // dezenas de vezes é inútil para quem usa leitor de tela.
-        aria-label={available ? `Adicionar ${product.name}` : `${product.name} indisponível`}
-        onClick={() =>
-          onAdd({
-            product,
-            branchId: menu.branch.id,
-            organizationSlug,
-            branchSlug,
-            quantity: 1,
-            selectedOptions: [],
-          })
-        }
-      >
-        {available ? 'Adicionar' : 'Esgotado'}
-      </button>
+      {/* Produto com opções vai para a tela dele: adicionar direto criaria uma
+          escolha inválida, recusada só lá no checkout. */}
+      {product.hasOptions ? (
+        <Link
+          className="ui-btn ui-btn--primary store__add"
+          to={available ? `produto/${product.id}` : '.'}
+          aria-disabled={!available}
+          // Rótulo com o nome do produto: numa lista, "Escolher" repetido
+          // dezenas de vezes é inútil para quem usa leitor de tela.
+          aria-label={available ? `Escolher opções de ${product.name}` : `${product.name} indisponível`}
+        >
+          {available ? 'Escolher' : 'Esgotado'}
+        </Link>
+      ) : (
+        <button
+          type="button"
+          className="ui-btn ui-btn--primary store__add"
+          disabled={!available}
+          aria-label={available ? `Adicionar ${product.name}` : `${product.name} indisponível`}
+          onClick={() =>
+            onAdd({
+              product,
+              branchId: menu.branch.id,
+              organizationSlug,
+              branchSlug,
+              quantity: 1,
+              selectedOptions: [],
+            })
+          }
+        >
+          {available ? 'Adicionar' : 'Esgotado'}
+        </button>
+      )}
     </li>
   );
 }

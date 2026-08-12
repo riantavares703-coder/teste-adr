@@ -173,6 +173,30 @@ export class CatalogService {
       imagesByProduct.set(img.productId, list);
     }
 
+    // Quais produtos têm opções a escolher. O cardápio precisa saber para
+    // mandar o cliente à tela do produto em vez de somar direto ao carrinho —
+    // um item com grupo obrigatório adicionado sem escolha seria recusado no
+    // checkout, depois de o cliente já achar que estava no carrinho.
+    const withOptions = new Set(
+      productIds.length > 0
+        ? (
+            await this.db.platform
+              .select({ productId: s.productModifierGroups.productId })
+              .from(s.productModifierGroups)
+              .innerJoin(
+                s.modifierGroups,
+                eq(s.modifierGroups.id, s.productModifierGroups.modifierGroupId),
+              )
+              .where(
+                and(
+                  inArray(s.productModifierGroups.productId, productIds),
+                  isNull(s.modifierGroups.deletedAt),
+                ),
+              )
+          ).map((row) => row.productId)
+        : [],
+    );
+
     const decorated = products.map(({ product, inventory }) => {
       const availability = inventory
         ? resolveAvailability({
@@ -194,6 +218,7 @@ export class CatalogService {
         categoryId: product.categoryId,
         isFeatured: product.isFeatured,
         allowsCustomerNotes: product.allowsCustomerNotes,
+        hasOptions: withOptions.has(product.id),
         preparationTimeMinutes: product.preparationTimeMinutes,
         imageUrl: primary ? `/v1/media/${primary.storageKey}` : null,
         thumbUrl: primary?.thumbStorageKey ? `/v1/media/${primary.thumbStorageKey}` : null,

@@ -59,6 +59,8 @@ export interface MenuProduct {
   categoryId: string | null;
   isFeatured: boolean;
   allowsCustomerNotes: boolean;
+  /** Tem grupo de opções: exige passar pela tela do produto antes do carrinho. */
+  hasOptions: boolean;
   imageUrl: string | null;
   thumbUrl: string | null;
   availability: AvailabilityView;
@@ -650,8 +652,12 @@ export class ApiClient {
     return this.request('PATCH', `/v1/branches/${branchId}/products/${productId}`, { body });
   }
 
+  deleteProduct(branchId: string, productId: string): Promise<{ deleted: boolean }> {
+    return this.request('DELETE', `/v1/branches/${branchId}/products/${productId}`);
+  }
+
   listCategories(branchId: string) {
-    return this.request<Array<{ id: string; name: string }>>(
+    return this.request<Array<{ id: string; name: string; position: number }>>(
       'GET',
       `/v1/branches/${branchId}/categories`,
     );
