@@ -4,6 +4,7 @@ import { LoginPage } from './pages/LoginPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { SharePage } from './pages/SharePage';
 import { MenuEditorPage } from './pages/MenuEditorPage';
+import { DashboardPage } from './pages/DashboardPage';
 import { StoreSettingsPage } from './pages/StoreSettingsPage';
 
 export function App() {
@@ -41,6 +42,7 @@ function Shell() {
             tela; quem recusa a operação continua sendo a API. */}
         <nav className="admin__nav">
           <NavLink to="/pedidos">Pedidos</NavLink>
+          {can('report:read') ? <NavLink to="/faturamento">Faturamento</NavLink> : null}
           {can('product:read') ? <NavLink to="/cardapio">Cardápio</NavLink> : null}
           {can('settings:read') ? <NavLink to="/loja">Horário</NavLink> : null}
           <NavLink to="/compartilhar">Compartilhar</NavLink>
@@ -57,6 +59,7 @@ function Shell() {
       <main className="admin__main">
         <Routes>
           <Route path="/pedidos" element={<OrdersPage />} />
+          <Route path="/faturamento" element={<DashboardPage />} />
           <Route path="/cardapio" element={<MenuEditorPage />} />
           <Route path="/loja" element={<StoreSettingsPage />} />
           <Route path="/compartilhar" element={<SharePage />} />

@@ -67,6 +67,43 @@ export interface AnalyticsSummary {
 }
 
 const MAX_DAYS = 365;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export interface RevenueQuery {
+  days: number;
+  branchId?: string;
+}
+
+export interface PeriodTotals {
+  orderCount: number;
+  revenueCents: number;
+  averageTicketCents: number;
+}
+
+export interface RevenueReport {
+  periodDays: number;
+  since: string;
+  /** Granularidade escolhida pelo servidor conforme o tamanho do intervalo. */
+  bucket: 'day' | 'week' | 'month';
+  scope: 'ORGANIZATION' | 'BRANCHES';
+  current: PeriodTotals;
+  /** Mesma duração, imediatamente antes — é o que dá sentido ao número atual. */
+  previous: PeriodTotals;
+  change: { revenuePercent: number | null; orderPercent: number | null };
+  series: Array<{ date: string; orderCount: number; revenueCents: number }>;
+}
+
+/**
+ * Variação percentual entre dois períodos.
+ *
+ * Devolve `null` quando o período anterior foi zero: "cresceu 100%" a partir de
+ * nada é uma afirmação sem conteúdo, e dividir por zero produziria `Infinity`
+ * na tela. A tela mostra "sem base de comparação" e diz a verdade.
+ */
+function percentChange(before: number, after: number): number | null {
+  if (before === 0) return null;
+  return Math.round(((after - before) / before) * 1000) / 10;
+}
 
 /**
  * O que conta como faturamento.
@@ -195,6 +232,121 @@ export class AnalyticsService {
           productId: row.product_id,
           productName: row.product_name,
           quantity: Number(row.quantity),
+          revenueCents: Number(row.revenue_cents),
+        })),
+      };
+    });
+  }
+
+  /**
+   * FATURAMENTO AO LONGO DO TEMPO, com comparação contra o período anterior.
+   *
+   * Duas perguntas que o total sozinho não responde: "como foi a semana, dia a
+   * dia" e "isso é melhor ou pior que antes". A segunda é a que importa para
+   * decidir alguma coisa — R$ 40 mil no trimestre não significa nada até se
+   * saber que o anterior fez R$ 52 mil.
+   *
+   * O período anterior tem exatamente a mesma duração e termina onde o atual
+   * começa. Comparar contra "mês passado" pelo calendário compararia 28 com 31
+   * dias, e fevereiro pareceria sempre um desastre.
+   *
+   * A agregação por dia é feita no BANCO (`date_trunc`), não em memória: o
+   * intervalo pode ser de um ano, e trazer todos os pedidos para somar no
+   * processo seria carregar milhares de linhas para devolver 365 números.
+   */
+  async revenue(principal: Principal, query: RevenueQuery): Promise<RevenueReport> {
+    const days = Math.floor(query.days);
+    if (!Number.isFinite(days) || days < 1 || days > MAX_DAYS) {
+      throw badRequest('PERIODO_INVALIDO', `Informe um período entre 1 e ${MAX_DAYS} dias.`);
+    }
+
+    const scope = await this.resolveScope(principal, query.branchId);
+    const now = new Date();
+    const since = new Date(now.getTime() - days * DAY_MS);
+    const previousSince = new Date(since.getTime() - days * DAY_MS);
+
+    // Dia, semana ou mês conforme o tamanho do intervalo: 365 pontos diários
+    // num gráfico de um ano viram ruído; 12 pontos mensais contam a história.
+    const bucket = days <= 31 ? 'day' : days <= 180 ? 'week' : 'month';
+
+    return this.db.withTenant(toTenantContext(principal), async (tx) => {
+      const branchFilter =
+        scope.branchIds.length > 0
+          ? sql`AND o.branch_id IN (${sql.join(
+              scope.branchIds.map((id) => sql`${id}::uuid`),
+              sql`, `,
+            )})`
+          : sql``;
+
+      const series = await tx.execute<{
+        bucket: string;
+        order_count: string;
+        revenue_cents: string;
+      }>(sql`
+        SELECT date_trunc(${bucket}, o.placed_at)::date::text AS bucket,
+               count(*)                      AS order_count,
+               COALESCE(sum(o.total_cents),0) AS revenue_cents
+          FROM orders o
+         WHERE o.placed_at >= ${since.toISOString()}
+           AND o.status IN ${REVENUE_STATUSES}
+           ${branchFilter}
+         GROUP BY 1
+         ORDER BY 1
+      `);
+
+      /**
+       * Os dois períodos numa consulta só, separados por CASE.
+       *
+       * Duas consultas dariam o mesmo número, mas com a chance de caírem em
+       * lados diferentes da virada do dia se o relógio passar da meia-noite
+       * entre elas.
+       */
+      const compared = await tx.execute<{
+        periodo: string;
+        order_count: string;
+        revenue_cents: string;
+      }>(sql`
+        SELECT CASE WHEN o.placed_at >= ${since.toISOString()} THEN 'atual' ELSE 'anterior' END AS periodo,
+               count(*)                       AS order_count,
+               COALESCE(sum(o.total_cents),0) AS revenue_cents
+          FROM orders o
+         WHERE o.placed_at >= ${previousSince.toISOString()}
+           AND o.status IN ${REVENUE_STATUSES}
+           ${branchFilter}
+         GROUP BY 1
+      `);
+
+      const rows = rowsOf(compared);
+      const current = rows.find((row) => row.periodo === 'atual');
+      const previous = rows.find((row) => row.periodo === 'anterior');
+
+      const currentRevenue = Number(current?.revenue_cents ?? 0);
+      const previousRevenue = Number(previous?.revenue_cents ?? 0);
+      const currentOrders = Number(current?.order_count ?? 0);
+      const previousOrders = Number(previous?.order_count ?? 0);
+
+      return {
+        periodDays: days,
+        since: since.toISOString(),
+        bucket,
+        scope: scope.kind,
+        current: {
+          orderCount: currentOrders,
+          revenueCents: currentRevenue,
+          averageTicketCents: averageTicket(currentRevenue, currentOrders),
+        },
+        previous: {
+          orderCount: previousOrders,
+          revenueCents: previousRevenue,
+          averageTicketCents: averageTicket(previousRevenue, previousOrders),
+        },
+        change: {
+          revenuePercent: percentChange(previousRevenue, currentRevenue),
+          orderPercent: percentChange(previousOrders, currentOrders),
+        },
+        series: rowsOf(series).map((row) => ({
+          date: row.bucket,
+          orderCount: Number(row.order_count),
           revenueCents: Number(row.revenue_cents),
         })),
       };

@@ -155,6 +155,25 @@ export interface ModifierOptionInput {
   position?: number;
 }
 
+export interface PeriodTotals {
+  orderCount: number;
+  revenueCents: number;
+  averageTicketCents: number;
+}
+
+export interface RevenueReport {
+  periodDays: number;
+  since: string;
+  bucket: 'day' | 'week' | 'month';
+  scope: 'ORGANIZATION' | 'BRANCHES';
+  current: PeriodTotals;
+  /** Mesma duração, imediatamente antes do período atual. */
+  previous: PeriodTotals;
+  /** `null` quando não houve movimento antes: não há base de comparação. */
+  change: { revenuePercent: number | null; orderPercent: number | null };
+  series: Array<{ date: string; orderCount: number; revenueCents: number }>;
+}
+
 export interface StoreSettings {
   branchId: string;
   preparationTimeMinutes: number;
@@ -699,6 +718,14 @@ export class ApiClient {
   }
 
   /** Indicadores consolidados. Sem `branchId`, o servidor decide o escopo. */
+  getRevenue(options: { days?: number; branchId?: string } = {}): Promise<RevenueReport> {
+    const params = new URLSearchParams();
+    if (options.days) params.set('days', String(options.days));
+    if (options.branchId) params.set('branchId', options.branchId);
+    const query = params.toString();
+    return this.request('GET', `/v1/analytics/revenue${query ? `?${query}` : ''}`);
+  }
+
   getAnalytics(options: { days?: number; branchId?: string } = {}): Promise<AnalyticsSummary> {
     const query = new URLSearchParams({ days: String(options.days ?? 30) });
     if (options.branchId) query.set('branchId', options.branchId);
