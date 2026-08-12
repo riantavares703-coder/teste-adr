@@ -79,6 +79,30 @@ export class CatalogController {
     return this.catalog.createCategory(principal, branchId, body);
   }
 
+  @Patch('branches/:branchId/categories/:categoryId')
+  @RequirePermission('category:manage')
+  async updateCategory(
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @Param('categoryId', ParseUUIDPipe) categoryId: string,
+    @Body(new ZodValidationPipe(CategorySchema.partial())) body: Partial<z.infer<typeof CategorySchema>>,
+    @CurrentUser() principal: Principal | null,
+  ) {
+    if (!principal) throw unauthorized();
+    return this.catalog.updateCategory(principal, branchId, categoryId, body);
+  }
+
+  @Delete('branches/:branchId/categories/:categoryId')
+  @RequirePermission('category:manage')
+  async deleteCategory(
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @Param('categoryId', ParseUUIDPipe) categoryId: string,
+    @CurrentUser() principal: Principal | null,
+  ) {
+    if (!principal) throw unauthorized();
+    await this.catalog.deleteCategory(principal, branchId, categoryId);
+    return { deleted: true };
+  }
+
   @Get('branches/:branchId/products')
   @RequirePermission('product:read')
   async listProducts(

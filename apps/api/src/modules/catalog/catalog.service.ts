@@ -382,6 +382,86 @@ export class CatalogService {
     });
   }
 
+  async updateCategory(
+    principal: Principal,
+    branchId: string,
+    categoryId: string,
+    input: { name?: string; description?: string | null; position?: number; isActive?: boolean },
+  ) {
+    const organizationId = await this.branchAccess.assertAccess(principal, branchId);
+
+    return this.db.withTenant(toTenantContext(principal), async (tx) => {
+      const updated = await tx
+        .update(s.categories)
+        .set({ ...input, updatedAt: new Date() } as never)
+        .where(
+          and(
+            eq(s.categories.id, categoryId),
+            eq(s.categories.branchId, branchId),
+            isNull(s.categories.deletedAt),
+          ),
+        )
+        .returning();
+      if (!updated[0]) throw notFound('CATEGORIA_NAO_ENCONTRADA', 'Categoria não encontrada');
+
+      await this.audit.record(tx, {
+        principal,
+        organizationId,
+        branchId,
+        action: 'category.updated',
+        resourceType: 'category',
+        resourceId: categoryId,
+        metadata: { changed: Object.keys(input) },
+      });
+      return updated[0];
+    });
+  }
+
+  /**
+   * Remove a categoria, soltando os produtos dela.
+   *
+   * Os produtos NÃO são removidos junto: apagar o cardápio inteiro porque o
+   * lojista renomeou uma seção seria destrutivo e irreversível. Eles ficam sem
+   * categoria e reaparecem para ser reclassificados.
+   */
+  async deleteCategory(principal: Principal, branchId: string, categoryId: string): Promise<void> {
+    const organizationId = await this.branchAccess.assertAccess(principal, branchId);
+
+    await this.db.withTenant(toTenantContext(principal), async (tx) => {
+      const rows = await tx
+        .select({ id: s.categories.id })
+        .from(s.categories)
+        .where(
+          and(
+            eq(s.categories.id, categoryId),
+            eq(s.categories.branchId, branchId),
+            isNull(s.categories.deletedAt),
+          ),
+        )
+        .limit(1);
+      if (!rows[0]) throw notFound('CATEGORIA_NAO_ENCONTRADA', 'Categoria não encontrada');
+
+      await tx
+        .update(s.products)
+        .set({ categoryId: null, updatedAt: new Date() } as never)
+        .where(eq(s.products.categoryId, categoryId));
+
+      await tx
+        .update(s.categories)
+        .set({ deletedAt: new Date() } as never)
+        .where(eq(s.categories.id, categoryId));
+
+      await this.audit.record(tx, {
+        principal,
+        organizationId,
+        branchId,
+        action: 'category.deleted',
+        resourceType: 'category',
+        resourceId: categoryId,
+      });
+    });
+  }
+
   async listProducts(principal: Principal, branchId: string) {
     await this.branchAccess.assertAccess(principal, branchId);
     return this.db.withTenant(toTenantContext(principal), async (tx) => {

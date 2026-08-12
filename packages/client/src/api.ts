@@ -120,6 +120,39 @@ export interface BrandingSettings {
   coverUrl: string | null;
 }
 
+/** Grupo de opções como o painel do administrador o edita. */
+export interface ModifierGroupAdmin {
+  id: string;
+  name: string;
+  minSelect: number;
+  maxSelect: number;
+  isRequired: boolean;
+  position: number;
+  options: Array<{
+    id: string;
+    name: string;
+    priceDeltaCents: number;
+    isAvailable: boolean;
+    position: number;
+  }>;
+}
+
+export interface ModifierGroupInput {
+  name: string;
+  minSelect?: number;
+  maxSelect?: number;
+  isRequired?: boolean;
+  position?: number;
+}
+
+export interface ModifierOptionInput {
+  name: string;
+  /** Negativo é legítimo: "sem queijo −R$ 2,00". */
+  priceDeltaCents?: number;
+  isAvailable?: boolean;
+  position?: number;
+}
+
 export interface StoreSettings {
   branchId: string;
   preparationTimeMinutes: number;
@@ -445,6 +478,81 @@ export class ApiClient {
    */
   getShareLink(branchId: string): Promise<ShareLink> {
     return this.request('GET', `/v1/branches/${branchId}/share-link`);
+  }
+
+  // --- opções do produto (grupos e opções) -----------------------------------
+
+  listModifierGroups(branchId: string): Promise<ModifierGroupAdmin[]> {
+    return this.request('GET', `/v1/branches/${branchId}/modifier-groups`);
+  }
+
+  createModifierGroup(branchId: string, input: ModifierGroupInput): Promise<{ id: string }> {
+    return this.request('POST', `/v1/branches/${branchId}/modifier-groups`, { body: input });
+  }
+
+  updateModifierGroup(
+    branchId: string,
+    groupId: string,
+    input: Partial<ModifierGroupInput>,
+  ): Promise<{ id: string }> {
+    return this.request('PATCH', `/v1/branches/${branchId}/modifier-groups/${groupId}`, {
+      body: input,
+    });
+  }
+
+  deleteModifierGroup(branchId: string, groupId: string): Promise<{ deleted: boolean }> {
+    return this.request('DELETE', `/v1/branches/${branchId}/modifier-groups/${groupId}`);
+  }
+
+  createModifierOption(
+    branchId: string,
+    groupId: string,
+    input: ModifierOptionInput,
+  ): Promise<{ id: string }> {
+    return this.request('POST', `/v1/branches/${branchId}/modifier-groups/${groupId}/options`, {
+      body: input,
+    });
+  }
+
+  updateModifierOption(
+    branchId: string,
+    optionId: string,
+    input: Partial<ModifierOptionInput>,
+  ): Promise<{ id: string }> {
+    return this.request('PATCH', `/v1/branches/${branchId}/modifier-options/${optionId}`, {
+      body: input,
+    });
+  }
+
+  deleteModifierOption(branchId: string, optionId: string): Promise<{ deleted: boolean }> {
+    return this.request('DELETE', `/v1/branches/${branchId}/modifier-options/${optionId}`);
+  }
+
+  /** Define quais grupos o produto usa, na ordem informada. */
+  setProductModifierGroups(
+    branchId: string,
+    productId: string,
+    groupIds: string[],
+  ): Promise<{ ok: boolean }> {
+    return this.request('PUT', `/v1/branches/${branchId}/products/${productId}/modifier-groups`, {
+      body: { groupIds },
+    });
+  }
+
+  // --- categorias ------------------------------------------------------------
+
+  updateCategory(
+    branchId: string,
+    categoryId: string,
+    input: { name?: string; description?: string | null; position?: number; isActive?: boolean },
+  ): Promise<{ id: string }> {
+    return this.request('PATCH', `/v1/branches/${branchId}/categories/${categoryId}`, {
+      body: input,
+    });
+  }
+
+  deleteCategory(branchId: string, categoryId: string): Promise<{ deleted: boolean }> {
+    return this.request('DELETE', `/v1/branches/${branchId}/categories/${categoryId}`);
   }
 
   // --- configurações da loja -------------------------------------------------

@@ -14,6 +14,8 @@ import { OtpDeliveryService } from './modules/auth/otp-delivery.service.js';
 import { AuditService } from './modules/audit/audit.service.js';
 import { CatalogController } from './modules/catalog/catalog.controller.js';
 import { CatalogService } from './modules/catalog/catalog.service.js';
+import { ModifiersController } from './modules/catalog/modifiers.controller.js';
+import { ModifiersService } from './modules/catalog/modifiers.service.js';
 import { BrandingController } from './modules/branding/branding.controller.js';
 import { BrandingService } from './modules/branding/branding.service.js';
 import { AnalyticsController } from './modules/analytics/analytics.controller.js';
@@ -83,6 +85,7 @@ const pushProvider: Provider = {
   controllers: [
     AuthController,
     CatalogController,
+    ModifiersController,
     InventoryController,
     OrderingController,
     PaymentsController,
@@ -103,6 +106,7 @@ const pushProvider: Provider = {
     AuthService,
     CryptoService,
     CatalogService,
+    ModifiersService,
     BrandingService,
     AnalyticsService,
     StorefrontService,
