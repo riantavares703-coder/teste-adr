@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 import pg from 'pg';
 
 /**
@@ -198,8 +199,10 @@ export async function seedDemo(connectionString: string): Promise<SeedResult> {
   }
 }
 
+// pathToFileURL: ver a mesma nota em migrate.ts — no Windows, a comparação
+// ingênua faz este arquivo terminar sem semear nada.
 const isDirectRun =
-  process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1]}`;
+  process.argv[1] !== undefined && pathToFileURL(process.argv[1]).href === import.meta.url;
 
 if (isDirectRun) {
   const url = process.env.DATABASE_URL;

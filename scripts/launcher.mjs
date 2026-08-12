@@ -25,7 +25,7 @@ import { mkdir, readFile, writeFile, access, rm } from 'node:fs/promises';
 import { constants, existsSync } from 'node:fs';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomBytes, generateKeyPairSync } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
@@ -466,7 +466,14 @@ async function main() {
   }
 }
 
-const isDirectRun = process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1]}`;
+/**
+ * `pathToFileURL`, e não `file://` + caminho: no Windows `process.argv[1]` vem
+ * como `C:\...\launcher.mjs`, que concatenado vira `file://C:\...` e nunca é
+ * igual ao `file:///C:/.../launcher.mjs` real. A comparação ingênua funciona no
+ * Linux e falha calada no Windows — o programa terminava sem imprimir nada.
+ */
+const isDirectRun =
+  process.argv[1] !== undefined && pathToFileURL(process.argv[1]).href === import.meta.url;
 if (isDirectRun) {
   main().catch((error) => {
     console.error(error);
