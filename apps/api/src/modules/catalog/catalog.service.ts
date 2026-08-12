@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { uuidv7 } from '../../common/uuid.js';
 
 import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm';
-import { resolveAvailability } from '@plataforma/domain';
+import { openState, resolveAvailability, type BusinessHour } from '@plataforma/domain';
 import { themeOf } from '../branding/branding.service.js';
 import { Database, type Db } from '../../db/client.js';
 import * as s from '../../db/schema.js';
@@ -11,6 +11,15 @@ import { toTenantContext, type Principal } from '../../common/principal.js';
 import { AuditService } from '../audit/audit.service.js';
 import { OutboxService } from '../notifications/outbox.service.js';
 import { BranchAccessService } from '../tenancy/branch-access.service.js';
+
+/** O PostgreSQL devolve `time` como `HH:MM:SS`; o domínio fala `HH:MM`. */
+function toBusinessHour(row: { weekday: number; opensAt: string; closesAt: string }): BusinessHour {
+  return {
+    weekday: row.weekday as BusinessHour['weekday'],
+    opensAt: row.opensAt.slice(0, 5),
+    closesAt: row.closesAt.slice(0, 5),
+  };
+}
 
 export interface UpsertProductInput {
   name: string;
@@ -110,6 +119,15 @@ export class CatalogService {
     const found = branchRows[0];
     if (!found) throw notFound('UNIDADE_NAO_ENCONTRADA', 'Estabelecimento não encontrado');
     const { branch, branding, settings } = found;
+
+    const hours = await this.db.platform
+      .select({
+        weekday: s.businessHours.weekday,
+        opensAt: s.businessHours.opensAt,
+        closesAt: s.businessHours.closesAt,
+      })
+      .from(s.businessHours)
+      .where(eq(s.businessHours.branchId, branch.id));
 
     const categories = await this.db.platform
       .select()
@@ -213,6 +231,10 @@ export class CatalogService {
             enabledPaymentMethods: settings.enabledPaymentMethods,
           }
         : null,
+      // Estado de abertura resolvido AQUI, pelo mesmo cálculo que o checkout
+      // usa para recusar. O cardápio não decide se está aberto olhando o
+      // relógio do celular do cliente — que pode estar errado ou adiantado.
+      open: openState(hours.map(toBusinessHour)),
       categories: categories.map((c) => ({
         id: c.id,
         name: c.name,

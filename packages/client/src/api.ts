@@ -1,7 +1,9 @@
 import type {
   AvailabilityView,
+  BusinessHour,
   FontToken,
   GradientStyle,
+  OpenState,
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
@@ -118,6 +120,18 @@ export interface BrandingSettings {
   coverUrl: string | null;
 }
 
+export interface StoreSettings {
+  branchId: string;
+  preparationTimeMinutes: number;
+  minOrderCents: number;
+  autoAcceptOrders: boolean;
+  paymentHoldMinutes: number;
+  cancellationWindowMinutes: number;
+  enabledPaymentMethods: PaymentMethod[];
+  hours: BusinessHour[];
+  open: OpenState;
+}
+
 export interface ShareLink {
   organizationSlug: string;
   branchSlug: string;
@@ -171,6 +185,8 @@ export interface Menu {
     preparationTimeMinutes: number;
     enabledPaymentMethods: PaymentMethod[];
   } | null;
+  /** Estado de abertura resolvido pelo servidor, nunca pelo relógio do cliente. */
+  open: OpenState;
   categories: MenuCategory[];
   featured: MenuProduct[];
   uncategorized: MenuProduct[];
@@ -215,6 +231,13 @@ export interface Order {
   customerNotes: string | null;
   placedAt: string;
   reservationExpiresAt: string | null;
+  /**
+   * Previsão de conclusão, calculada pelo servidor a partir do tempo de preparo
+   * da loja. É o que alimenta a barra de progresso — o app não estima nada.
+   */
+  estimatedReadyAt: string | null;
+  confirmedAt: string | null;
+  readyAt: string | null;
 }
 
 export interface PaymentView {
@@ -422,6 +445,34 @@ export class ApiClient {
    */
   getShareLink(branchId: string): Promise<ShareLink> {
     return this.request('GET', `/v1/branches/${branchId}/share-link`);
+  }
+
+  // --- configurações da loja -------------------------------------------------
+
+  getSettings(branchId: string): Promise<StoreSettings> {
+    return this.request('GET', `/v1/branches/${branchId}/settings`);
+  }
+
+  updateSettings(
+    branchId: string,
+    input: Partial<
+      Pick<
+        StoreSettings,
+        | 'preparationTimeMinutes'
+        | 'minOrderCents'
+        | 'autoAcceptOrders'
+        | 'paymentHoldMinutes'
+        | 'cancellationWindowMinutes'
+        | 'enabledPaymentMethods'
+      >
+    >,
+  ): Promise<StoreSettings> {
+    return this.request('PUT', `/v1/branches/${branchId}/settings`, { body: input });
+  }
+
+  /** Substitui o horário inteiro: a regra de não-sobreposição é de conjunto. */
+  replaceHours(branchId: string, hours: BusinessHour[]): Promise<StoreSettings> {
+    return this.request('PUT', `/v1/branches/${branchId}/hours`, { body: { hours } });
   }
 
   listBranchOrders(branchId: string, statuses?: OrderStatus[]): Promise<OrderDetail[]> {

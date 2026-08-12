@@ -12,6 +12,9 @@ import {
   type FulfillmentType,
   type OrderStatus,
   type PaymentMethod,
+  openState,
+  describeOpenState,
+  type BusinessHour,
 } from '@plataforma/domain';
 import { Database, type Db } from '../../db/client.js';
 import * as s from '../../db/schema.js';
@@ -190,6 +193,30 @@ export class OrderingService {
 
     if (branch.status !== 'ACTIVE') {
       throw conflict('LOJA_FECHADA', 'A unidade não está aceitando pedidos no momento');
+    }
+
+    // Horário de funcionamento. O cardápio já avisa que está fechado, mas quem
+    // RECUSA é aqui: o cliente pode ter deixado a página aberta desde antes de
+    // fechar, ou chamar a API direto. Sem horário cadastrado, a loja é
+    // considerada aberta (ver `openState`).
+    const hours = await tx
+      .select({
+        weekday: s.businessHours.weekday,
+        opensAt: s.businessHours.opensAt,
+        closesAt: s.businessHours.closesAt,
+      })
+      .from(s.businessHours)
+      .where(eq(s.businessHours.branchId, branch.id));
+
+    const open = openState(
+      hours.map((h) => ({
+        weekday: h.weekday as BusinessHour['weekday'],
+        opensAt: h.opensAt.slice(0, 5),
+        closesAt: h.closesAt.slice(0, 5),
+      })),
+    );
+    if (!open.isOpen) {
+      throw conflict('LOJA_FECHADA', describeOpenState(open));
     }
     if (input.fulfillment === 'DELIVERY' && !branch.acceptsDelivery) {
       throw unprocessable('ENTREGA_INDISPONIVEL', 'Esta unidade não faz entrega');
