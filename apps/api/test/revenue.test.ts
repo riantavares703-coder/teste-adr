@@ -76,10 +76,10 @@ describe('Faturamento por período', () => {
       `+55119${Math.floor(Math.random() * 100_000_000)}`,
     );
     await client.query(
-      `INSERT INTO orders (id, organization_id, branch_id, customer_id, order_number, status,
-                           fulfillment, payment_method, subtotal_cents, delivery_fee_cents,
+      `INSERT INTO orders (id, organization_id, branch_id, customer_id, order_number, business_date,
+                           status, fulfillment, payment_method, subtotal_cents, delivery_fee_cents,
                            discount_cents, total_cents, placed_at)
-       VALUES ($1,$2,$3,$4,$5,'DELIVERED','PICKUP','CASH_ON_SITE',$6,0,0,$6,$7)`,
+       VALUES ($1,$2,$3,$4,$5,$7::date,'DELIVERED','PICKUP','CASH_ON_SITE',$6,0,0,$6,$7)`,
       [
         id,
         fixture.organizationId,
@@ -164,10 +164,10 @@ describe('Faturamento por período', () => {
     await venda(acme, 1, 5000);
     const cliente = await seedCustomer(client, '+5511988887777');
     await client.query(
-      `INSERT INTO orders (id, organization_id, branch_id, customer_id, order_number, status,
-                           fulfillment, payment_method, subtotal_cents, delivery_fee_cents,
+      `INSERT INTO orders (id, organization_id, branch_id, customer_id, order_number, business_date,
+                           status, fulfillment, payment_method, subtotal_cents, delivery_fee_cents,
                            discount_cents, total_cents, placed_at)
-       VALUES ($1,$2,$3,$4,'CANCELADO','CANCELLED','PICKUP','CASH_ON_SITE',90000,0,0,90000, now())`,
+       VALUES ($1,$2,$3,$4,'CANCELADO',CURRENT_DATE,'CANCELLED','PICKUP','CASH_ON_SITE',90000,0,0,90000, now())`,
       [randomUUID(), acme.organizationId, acme.branchId, cliente.id],
     );
 

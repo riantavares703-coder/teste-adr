@@ -563,6 +563,11 @@ export const orders = pgTable('orders', {
   branchId: uuid('branch_id').notNull(),
   customerId: uuid('customer_id').notNull(),
   orderNumber: text('order_number').notNull(),
+  // Dia de operação da unidade (fuso dela), não a data em UTC de `placed_at`:
+  // é o que faz o número amigável ser único de verdade — ele reinicia por dia
+  // (ver order_number_counters), então precisa da data para não colidir com o
+  // mesmo #1001 de um dia anterior.
+  businessDate: date('business_date').notNull(),
   status: orderStatus('status').notNull().default('PENDING'),
   fulfillment: fulfillmentType('fulfillment').notNull(),
   paymentMethod: paymentMethod('payment_method').notNull(),

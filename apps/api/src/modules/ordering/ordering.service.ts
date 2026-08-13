@@ -457,7 +457,11 @@ export class OrderingService {
     // --- número amigável (atômico por unidade) ------------------------------
     const holdMinutes = settings.paymentHoldMinutes;
     const reservationExpiresAt = new Date(Date.now() + holdMinutes * 60_000);
-    const orderNumber = await this.nextOrderNumber(tx, input.branchId, branch.timezone);
+    // UMA data calculada aqui, usada tanto no contador quanto no pedido: são o
+    // mesmo "dia de operação", e um contador nunca pode achar um dia diferente
+    // do que o pedido efetivamente grava (ver migração 0005).
+    const businessDate = businessDateFor(new Date(), branch.timezone);
+    const orderNumber = await this.nextOrderNumber(tx, input.branchId, businessDate);
 
     // --- persistência do pedido ---------------------------------------------
     // O pedido é inserido ANTES da reserva porque inventory_reservations tem FK
@@ -469,6 +473,7 @@ export class OrderingService {
       branchId: input.branchId,
       customerId: principal.userId,
       orderNumber,
+      businessDate,
       status: 'PENDING',
       fulfillment: input.fulfillment,
       paymentMethod: input.paymentMethod,
@@ -597,8 +602,7 @@ export class OrderingService {
    * INSERT ... ON CONFLICT DO UPDATE ... RETURNING é uma única operação: 50
    * pedidos simultâneos produzem 50 números distintos, sem lacuna nem colisão.
    */
-  private async nextOrderNumber(tx: Db, branchId: string, timezone: string): Promise<string> {
-    const businessDate = businessDateFor(new Date(), timezone);
+  private async nextOrderNumber(tx: Db, branchId: string, businessDate: string): Promise<string> {
     const result = await tx.execute(sql`
       INSERT INTO order_number_counters (branch_id, business_date, last_number)
       VALUES (${branchId}, ${businessDate}, 1)

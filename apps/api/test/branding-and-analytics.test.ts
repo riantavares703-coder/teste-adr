@@ -380,9 +380,9 @@ describe('Aparência da unidade e indicadores da franquia', () => {
     async function completedOrder(fixture: Fixture, branchId: string, totalCents: number) {
       const orderId = randomUUID();
       await client.query(
-        `INSERT INTO orders (id, organization_id, branch_id, customer_id, order_number, status,
-                             fulfillment, payment_method, subtotal_cents, total_cents, placed_at)
-         VALUES ($1, $2, $3, $4, $5, 'DELIVERED', 'PICKUP', 'CASH_ON_SITE', $6, $6, now())`,
+        `INSERT INTO orders (id, organization_id, branch_id, customer_id, order_number, business_date,
+                             status, fulfillment, payment_method, subtotal_cents, total_cents, placed_at)
+         VALUES ($1, $2, $3, $4, $5, CURRENT_DATE, 'DELIVERED', 'PICKUP', 'CASH_ON_SITE', $6, $6, now())`,
         [
           orderId,
           fixture.organizationId,
@@ -514,9 +514,9 @@ describe('Aparência da unidade e indicadores da franquia', () => {
     async function completedOrder(fixture: Fixture, branchId: string, totalCents: number) {
       const orderId = randomUUID();
       await client.query(
-        `INSERT INTO orders (id, organization_id, branch_id, customer_id, order_number, status,
-                             fulfillment, payment_method, subtotal_cents, total_cents, placed_at)
-         VALUES ($1, $2, $3, $4, $5, 'DELIVERED', 'PICKUP', 'CASH_ON_SITE', $6, $6, now())`,
+        `INSERT INTO orders (id, organization_id, branch_id, customer_id, order_number, business_date,
+                             status, fulfillment, payment_method, subtotal_cents, total_cents, placed_at)
+         VALUES ($1, $2, $3, $4, $5, CURRENT_DATE, 'DELIVERED', 'PICKUP', 'CASH_ON_SITE', $6, $6, now())`,
         [
           orderId,
           fixture.organizationId,
