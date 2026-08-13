@@ -23,7 +23,9 @@ const DUMMY_HASH =
 
 @Injectable()
 export class PasswordService {
-  constructor(private readonly env = loadEnv()) {}
+  // Campo com inicializador em vez de parâmetro de construtor com valor
+  // padrão: o Nest tentaria injetar o parâmetro (ver db/client.ts).
+  private readonly env = loadEnv();
 
   private pepper(password: string): string {
     const key = this.env.PASSWORD_PEPPER;
