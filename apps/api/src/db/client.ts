@@ -40,7 +40,14 @@ export class Database implements OnModuleDestroy {
   /** Acesso sem RLS — usado apenas por migrações e pelo fluxo de identidade. */
   readonly platform: Db;
 
-  constructor(connectionString = loadEnv().DATABASE_URL) {
+  constructor() {
+    // Sem parâmetro: um construtor com argumento opcional e valor padrão é
+    // ambíguo para o DI do Nest — dependendo de como os metadados de decorador
+    // são emitidos (esbuild, usado por tsx, não os emite; `tsc` emite, mas o
+    // parâmetro sem anotação de tipo vira `Object`), o container tenta
+    // injetar um token que não existe. Lendo o valor direto no corpo, o
+    // construtor fica com zero parâmetros e nada para o Nest resolver aqui.
+    const connectionString = loadEnv().DATABASE_URL;
     this.pool = new pg.Pool({
       connectionString,
       max: 20,

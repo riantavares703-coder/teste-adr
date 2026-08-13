@@ -36,6 +36,7 @@ const PGROOT = join(RUNTIME, 'pgsql');
 const PGDATA = join(RUNTIME, 'pgdata');
 const SECRETS_FILE = join(RUNTIME, 'secrets.json');
 const API_DIR = join(ROOT, 'apps', 'api');
+const DOMAIN_DIR = join(ROOT, 'packages', 'domain');
 
 const PGPORT = Number(process.env.PGPORT ?? 5433);
 const APIPORT = Number(process.env.PORT ?? 3000);
@@ -115,6 +116,39 @@ function ensureWebBuilds() {
   for (const target of targets) {
     const result = runShell(`pnpm --filter ${target.name} build`);
     if (result.status !== 0) fail(`não foi possível preparar as telas (${target.name}).`);
+  }
+}
+
+/**
+ * Compila o pacote de domínio e a API para JavaScript puro, se ainda não
+ * estiverem compilados.
+ *
+ * Por quê: rodar `main.ts` cru via `tsx --import tsx/esm` funciona em
+ * desenvolvimento, mas o gancho de módulo do tsx intercepta a resolução de
+ * TODO o grafo — inclusive de dependências já compiladas, como o
+ * `drizzle-orm`. Em versões recentes do Node isso pode produzir um ciclo de
+ * `require(esm)` que o runtime agora recusa (`ERR_REQUIRE_CYCLE_MODULE`),
+ * derrubando o processo no instante em que o sistema deveria subir. Rodando
+ * o `.js` já compilado com `node` puro, a resolução do módulo é 100% nativa
+ * do Node do início ao fim, e esse ciclo não tem como se formar.
+ *
+ * `packages/domain` continua exportando as fontes `.ts` por padrão (é assim
+ * que Vite e os testes o consomem, sem exigir rebuild a cada edição); só
+ * quando a API roda com `--conditions=node-dist` é que a resolução aponta
+ * para `dist/index.js` — ver a condição no `package.json` do pacote.
+ */
+function ensureApiBuild() {
+  const targets = [
+    { name: '@plataforma/domain', dist: join(DOMAIN_DIR, 'dist', 'index.js') },
+    { name: '@plataforma/api', dist: join(API_DIR, 'dist', 'main.js') },
+  ].filter((target) => !existsSync(target.dist));
+
+  if (targets.length === 0) return;
+
+  step('Preparando o servidor');
+  for (const target of targets) {
+    const result = runShell(`pnpm --filter ${target.name} build`);
+    if (result.status !== 0) fail(`não foi possível preparar o servidor (${target.name}).`);
   }
 }
 
@@ -410,8 +444,9 @@ export function lanAddress() {
 // API
 // ---------------------------------------------------------------------------
 
+/** Roda um script JÁ COMPILADO (dist/*.js) com node puro — ver ensureApiBuild(). */
 function runNodeScript(script, env, label) {
-  const result = spawnSync(process.execPath, ['--import', 'tsx/esm', script], {
+  const result = spawnSync(process.execPath, ['--conditions=node-dist', script], {
     cwd: API_DIR,
     env,
     stdio: 'inherit',
@@ -462,6 +497,7 @@ async function main() {
 
   ensureDependencies();
   ensureWebBuilds();
+  ensureApiBuild();
 
   const binDir = await ensurePostgresBinaries();
   await ensureCluster(binDir);
@@ -495,15 +531,15 @@ async function main() {
   };
 
   step('Atualizando o banco de dados');
-  runNodeScript(join(API_DIR, 'src', 'db', 'migrate.ts'), env, 'atualizar o banco de dados');
-  runNodeScript(join(API_DIR, 'src', 'db', 'seed.ts'), env, 'preparar o cardápio inicial');
+  runNodeScript(join(API_DIR, 'dist', 'db', 'migrate.js'), env, 'atualizar o banco de dados');
+  runNodeScript(join(API_DIR, 'dist', 'db', 'seed.js'), env, 'preparar o cardápio inicial');
 
   step('Iniciando o sistema');
-  const api = spawn(process.execPath, ['--import', 'tsx/esm', join(API_DIR, 'src', 'main.ts')], {
-    cwd: API_DIR,
-    env,
-    stdio: 'inherit',
-  });
+  const api = spawn(
+    process.execPath,
+    ['--conditions=node-dist', join(API_DIR, 'dist', 'main.js')],
+    { cwd: API_DIR, env, stdio: 'inherit' },
+  );
   api.on('exit', (code) => {
     if (!stopping && code !== 0) {
       console.error(`\nO sistema encerrou inesperadamente (código ${code}).`);

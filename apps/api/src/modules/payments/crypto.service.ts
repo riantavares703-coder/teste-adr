@@ -16,7 +16,12 @@ export class CryptoService {
   private readonly key: Buffer;
   private readonly hmacKey: Buffer;
 
-  constructor(env = loadEnv()) {
+  constructor() {
+    // Sem parâmetro: um argumento com valor padrão é ambíguo para o DI do
+    // Nest quando o build passa por `tsc` puro em vez do esbuild do tsx (ver
+    // db/client.ts para o detalhe). Lendo `loadEnv()` no corpo, o construtor
+    // fica com zero parâmetros — nada para o Nest tentar resolver aqui.
+    const env = loadEnv();
     const material = env.DATA_ENCRYPTION_KEY ?? randomBytes(32).toString('hex');
     this.key = scryptSync(material, 'plataforma-data-key', 32);
     this.hmacKey = scryptSync(material, 'plataforma-hmac-key', 32);

@@ -29,7 +29,11 @@ export class TokenService {
   private publicKey!: KeyLike;
   private ready: Promise<void>;
 
-  constructor(private readonly env = loadEnv()) {
+  // Campo com inicializador em vez de parâmetro de construtor com valor
+  // padrão: o Nest tentaria injetar o parâmetro (ver db/client.ts).
+  private readonly env = loadEnv();
+
+  constructor() {
     this.ready = this.init();
   }
 
