@@ -121,6 +121,25 @@ export function OrdersPage() {
     }
   }
 
+  /**
+   * Confirma o RECEBIMENTO — máquina de estado separada da do pedido, de
+   * propósito: um Pix pode chegar com o pedido já pronto, ou nunca chegar
+   * enquanto o pedido segue preparado e entregue normalmente.
+   */
+  async function confirmPayment(order: OrderDetail) {
+    if (!order.payment) return;
+    setWorking(order.order.id);
+    setActionError(null);
+    try {
+      await api.confirmPayment(branch.id, order.payment.id);
+      await load();
+    } catch (e) {
+      setActionError(friendlyMessage(e));
+    } finally {
+      setWorking(null);
+    }
+  }
+
   const active = orders.filter(
     (o) => !['DELIVERED', 'PICKED_UP', 'CANCELLED', 'REJECTED', 'EXPIRED'].includes(o.order.status),
   );
@@ -192,7 +211,9 @@ export function OrdersPage() {
                       isNew={arrived.has(detail.order.id)}
                       busy={working === detail.order.id}
                       canMove={can('order:transition')}
+                      canConfirmPayment={can('payment:confirm')}
                       onMove={(to) => void move(detail, to)}
+                      onConfirmPayment={() => void confirmPayment(detail)}
                     />
                   ))
                 )}
@@ -210,13 +231,17 @@ function OrderCard({
   isNew,
   busy,
   canMove,
+  canConfirmPayment,
   onMove,
+  onConfirmPayment,
 }: {
   detail: OrderDetail;
   isNew: boolean;
   busy: boolean;
   canMove: boolean;
+  canConfirmPayment: boolean;
   onMove: (to: OrderStatus) => void;
+  onConfirmPayment: () => void;
 }) {
   const { order, items, payment } = detail;
   const minutes = Math.floor((Date.now() - new Date(order.placedAt).getTime()) / 60_000);
@@ -240,9 +265,21 @@ function OrderCard({
         {/* Pagamento é máquina de estado SEPARADA do pedido: pode estar em
             preparo com pagamento pendente. */}
         {payment && payment.status !== 'CONFIRMED' ? (
-          <span className="ui-badge ui-badge--warning">
-            {payment.method === 'PIX' ? 'Pix não confirmado' : 'Paga na entrega'}
-          </span>
+          <>
+            <span className="ui-badge ui-badge--warning">
+              {payment.method === 'PIX' ? 'Pix não confirmado' : 'Paga na entrega'}
+            </span>
+            {canConfirmPayment ? (
+              <button
+                type="button"
+                className="ticket__payconfirm"
+                disabled={busy}
+                onClick={onConfirmPayment}
+              >
+                Confirmar pagamento
+              </button>
+            ) : null}
+          </>
         ) : (
           <span className="ui-badge ui-badge--success">Pago</span>
         )}

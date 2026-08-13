@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { StoreSettings } from '@plataforma/client';
+import type { PixSettingsView, StoreSettings } from '@plataforma/client';
 import {
   WEEKDAYS,
   describeOpenState,
@@ -18,6 +18,14 @@ const METHOD_LABEL: Record<string, string> = {
 };
 
 const ALL_METHODS: PaymentMethod[] = ['PIX', 'CASH_ON_SITE', 'CREDIT_ON_SITE', 'DEBIT_ON_SITE'];
+
+const PIX_KEY_TYPE_LABEL: Record<string, string> = {
+  CPF: 'CPF',
+  CNPJ: 'CNPJ',
+  EMAIL: 'E-mail',
+  PHONE: 'Telefone',
+  RANDOM: 'Chave aleatória',
+};
 
 /**
  * HORÁRIO E CONFIGURAÇÕES DA LOJA.
@@ -42,23 +50,40 @@ export function StoreSettingsPage() {
   const [saved, setSaved] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const [pix, setPix] = useState<PixSettingsView | null>(null);
+  const [pixKeyType, setPixKeyType] = useState('RANDOM');
+  const [pixKey, setPixKey] = useState('');
+  const [pixMerchantName, setPixMerchantName] = useState('');
+  const [pixMerchantCity, setPixMerchantCity] = useState('');
+  const [pixError, setPixError] = useState<string | null>(null);
+  const [pixSaving, setPixSaving] = useState(false);
+
   const editable = can('settings:update');
+  const pixReadable = can('pix_settings:read');
+  const pixEditable = can('pix_settings:update');
 
   const load = useCallback(async () => {
     try {
-      const loaded = await api.getSettings(branch.id);
+      const [loaded, pixLoaded] = await Promise.all([
+        api.getSettings(branch.id),
+        pixReadable ? api.getPixSettings(branch.id) : Promise.resolve(null),
+      ]);
       setSettings(loaded);
       setHours(loaded.hours);
       setPrep(String(loaded.preparationTimeMinutes));
       setMinOrder(centsToInput(loaded.minOrderCents));
       setMethods(loaded.enabledPaymentMethods);
+      setPix(pixLoaded);
+      if (pixLoaded?.keyType) setPixKeyType(pixLoaded.keyType);
+      if (pixLoaded?.merchantName) setPixMerchantName(pixLoaded.merchantName);
+      if (pixLoaded?.merchantCity) setPixMerchantCity(pixLoaded.merchantCity);
       setError(null);
     } catch (e) {
       setError(e);
     } finally {
       setLoading(false);
     }
-  }, [api, branch.id]);
+  }, [api, branch.id, pixReadable]);
 
   useEffect(() => {
     setLoading(true);
@@ -116,6 +141,35 @@ export function StoreSettingsPage() {
       setSaveError(friendlyMessage(e));
     } finally {
       setSaving(false);
+    }
+  }
+
+  /**
+   * A chave digitada NUNCA é reaproveitada de volta no formulário: o servidor
+   * só devolve a máscara. Trocar a chave é sempre digitar de novo, o que evita
+   * mostrar em tela algo que nem o próprio operador logado deveria reler.
+   */
+  async function savePix() {
+    if (!pixKey.trim() || !pixMerchantName.trim() || !pixMerchantCity.trim()) {
+      setPixError('Preencha a chave, o nome e a cidade do recebedor');
+      return;
+    }
+    setPixSaving(true);
+    setPixError(null);
+    try {
+      await api.setPixSettings(branch.id, {
+        keyType: pixKeyType,
+        key: pixKey.trim(),
+        merchantName: pixMerchantName.trim(),
+        merchantCity: pixMerchantCity.trim(),
+      });
+      setPix(await api.getPixSettings(branch.id));
+      setPixKey('');
+      announce('Chave Pix salva');
+    } catch (e) {
+      setPixError(friendlyMessage(e));
+    } finally {
+      setPixSaving(false);
     }
   }
 
@@ -281,6 +335,13 @@ export function StoreSettingsPage() {
                 ))}
               </fieldset>
 
+              {methods.includes('PIX') && pix && !pix.configured ? (
+                <Notice tone="warning" title="Pix aceito, mas sem chave cadastrada">
+                  Um cliente que escolher Pix vai receber erro ao fechar o pedido. Cadastre a
+                  chave logo abaixo, ou desmarque Pix até configurar.
+                </Notice>
+              ) : null}
+
               {editable ? (
                 <div className="form__footer">
                   <Button loading={saving} onClick={() => void saveSettings()}>
@@ -289,6 +350,90 @@ export function StoreSettingsPage() {
                 </div>
               ) : null}
             </div>
+
+            {pixReadable ? (
+              <div className="ui-card">
+                <h3>Chave Pix</h3>
+                <p className="form__hint">
+                  Gerada no seu próprio celular ao pagar: sem taxa, sem intermediário. A loja
+                  precisa confirmar o recebimento manualmente — nenhum código Pix estático avisa
+                  sozinho que o dinheiro caiu.
+                </p>
+
+                {pix?.configured ? (
+                  <p>
+                    Chave atual: <strong>{PIX_KEY_TYPE_LABEL[pix.keyType ?? ''] ?? pix.keyType}</strong>{' '}
+                    terminada em <strong>{pix.keyMasked}</strong>
+                  </p>
+                ) : (
+                  <p className="form__hint">Nenhuma chave cadastrada ainda.</p>
+                )}
+
+                {pixEditable ? (
+                  <>
+                    <div className="ui-field">
+                      <label htmlFor="pixTipo">Tipo de chave</label>
+                      <select
+                        id="pixTipo"
+                        className="ui-input"
+                        value={pixKeyType}
+                        onChange={(e) => setPixKeyType(e.target.value)}
+                      >
+                        {Object.entries(PIX_KEY_TYPE_LABEL).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="ui-field">
+                      <label htmlFor="pixChave">
+                        {pix?.configured ? 'Nova chave (substitui a atual)' : 'Chave Pix'}
+                      </label>
+                      <input
+                        id="pixChave"
+                        className="ui-input"
+                        value={pixKey}
+                        placeholder="CPF, e-mail, telefone ou chave aleatória"
+                        onChange={(e) => setPixKey(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="ui-field">
+                      <label htmlFor="pixNome">Nome do recebedor</label>
+                      <input
+                        id="pixNome"
+                        className="ui-input"
+                        value={pixMerchantName}
+                        maxLength={25}
+                        placeholder="Como aparece no app do banco de quem paga"
+                        onChange={(e) => setPixMerchantName(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="ui-field">
+                      <label htmlFor="pixCidade">Cidade do recebedor</label>
+                      <input
+                        id="pixCidade"
+                        className="ui-input"
+                        value={pixMerchantCity}
+                        maxLength={15}
+                        onChange={(e) => setPixMerchantCity(e.target.value)}
+                      />
+                    </div>
+
+                    {pixError ? <Notice tone="danger">{pixError}</Notice> : null}
+
+                    <div className="form__footer">
+                      <Button loading={pixSaving} onClick={() => void savePix()}>
+                        {pix?.configured ? 'Substituir chave' : 'Salvar chave'}
+                      </Button>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
           </>
         ) : null}
       </AsyncBoundary>

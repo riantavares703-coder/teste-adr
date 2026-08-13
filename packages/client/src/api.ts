@@ -307,6 +307,14 @@ export interface PaymentView {
   confirmedAt: string | null;
 }
 
+export interface PixSettingsView {
+  configured: boolean;
+  keyType: string | null;
+  keyMasked: string | null;
+  merchantName: string | null;
+  merchantCity: string | null;
+}
+
 export interface OrderDetail {
   order: Order;
   items: OrderItem[];
@@ -739,6 +747,10 @@ export class ApiClient {
     return this.request<{ keyMasked: string }>('PUT', `/v1/branches/${branchId}/pix-settings`, {
       body,
     });
+  }
+
+  getPixSettings(branchId: string): Promise<PixSettingsView> {
+    return this.request('GET', `/v1/branches/${branchId}/pix-settings`);
   }
 
   async uploadProductImage(

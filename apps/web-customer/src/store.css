@@ -625,6 +625,59 @@
   letter-spacing: var(--tracking-tight);
 }
 
+/* --- Cartão de pagamento ---------------------------------------------------- */
+
+.pay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  text-align: center;
+}
+
+.pay--ok {
+  align-items: flex-start;
+  text-align: left;
+}
+
+.pay__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: var(--sp-2);
+}
+
+.pay__qr {
+  width: 200px;
+  height: 200px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--c-border);
+  background: #fff;
+  padding: var(--sp-2);
+}
+
+.pay__copy {
+  width: 100%;
+}
+
+.pay__code {
+  display: block;
+  width: 100%;
+  padding: var(--sp-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-hover);
+  font-size: var(--text-xs);
+  word-break: break-all;
+  text-align: left;
+  color: var(--c-muted);
+}
+
+.pay__hint {
+  color: var(--c-muted);
+  font-size: var(--text-sm);
+}
+
 /* --- Barra de preparo ----------------------------------------------------- */
 
 .prep {

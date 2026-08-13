@@ -13,11 +13,13 @@
     "@plataforma/client": "workspace:*",
     "@plataforma/domain": "workspace:*",
     "@plataforma/ui-web": "workspace:*",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.24.0"
   },
   "devDependencies": {
+    "@types/qrcode": "^1.5.5",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.0",

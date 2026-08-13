@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import type { MenuProduct, ModifierGroupAdmin } from '@plataforma/client';
 import { Button, Field, Notice, friendlyMessage } from '@plataforma/ui-web';
 import { useSession } from '../session';
@@ -24,7 +24,7 @@ export function ProductForm({
   onDone: () => void;
   onCancel: () => void;
 }) {
-  const { api, branch } = useSession();
+  const { api, branch, can } = useSession();
 
   const [name, setName] = useState(product?.name ?? '');
   const [description, setDescription] = useState(product?.description ?? '');
@@ -37,6 +37,29 @@ export function ProductForm({
   const [linkedIds, setLinkedIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // A foto só sobe no SALVAR (junto com o resto do formulário) — um produto
+  // novo ainda não tem id para o upload apontar. Até lá, o arquivo escolhido
+  // fica só neste estado, e a prévia é uma URL local (não sai do navegador).
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(product?.imageUrl ?? null);
+  const canUploadImage = can('media:upload');
+
+  useEffect(() => {
+    return () => {
+      if (imagePreview && imagePreview.startsWith('blob:')) URL.revokeObjectURL(imagePreview);
+    };
+  }, [imagePreview]);
+
+  function pickImage(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    // A troca de valor por si só aciona a limpeza da blob URL anterior no
+    // efeito acima — não precisa revogar aqui também.
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -88,6 +111,15 @@ export function ProductForm({
       const productId = product?.id ?? (saved as { id: string }).id;
       await api.setProductModifierGroups(branch.id, productId, linkedIds);
 
+      if (imageFile) {
+        await api.uploadProductImage(
+          branch.id,
+          productId,
+          { uri: imageFile.name, mimeType: imageFile.type, blob: imageFile },
+          { primary: true },
+        );
+      }
+
       onDone();
     } catch (e) {
       setError(friendlyMessage(e));
@@ -106,6 +138,36 @@ export function ProductForm({
       </div>
 
       <form onSubmit={submit}>
+        {canUploadImage ? (
+          <div className="ui-card">
+            <div className="photofield">
+              <div className="photofield__preview">
+                {imagePreview ? (
+                  <img src={imagePreview} alt="" />
+                ) : (
+                  <span className="photofield__empty" aria-hidden="true">
+                    🍽️
+                  </span>
+                )}
+              </div>
+
+              <div className="photofield__body">
+                <strong>Foto do produto</strong>
+                <p className="form__hint">JPEG, PNG ou WebP. Aparece no cardápio do cliente.</p>
+                <label className="ui-btn ui-btn--secondary photofield__pick">
+                  {imagePreview ? 'Trocar foto' : 'Escolher foto'}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={pickImage}
+                    hidden
+                  />
+                </label>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <div className="ui-card">
           <Field
             label="Nome"

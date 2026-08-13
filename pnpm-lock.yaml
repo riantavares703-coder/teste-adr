@@ -108,6 +108,9 @@ importers:
       '@plataforma/ui-web':
         specifier: workspace:*
         version: link:../../packages/ui-web
+      qrcode:
+        specifier: ^1.5.4
+        version: 1.5.4
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -118,6 +121,9 @@ importers:
         specifier: ^6.24.0
         version: 6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
     devDependencies:
+      '@types/qrcode':
+        specifier: ^1.5.5
+        version: 1.5.6
       '@types/react':
         specifier: ^18.3.12
         version: 18.3.31

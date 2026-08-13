@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import type { OrderDetail } from '@plataforma/client';
-import { AsyncBoundary, Badge, Price, Row, useRealtime, type Tone } from '@plataforma/ui-web';
+import QRCode from 'qrcode';
+import type { OrderDetail, PaymentView } from '@plataforma/client';
+import { PAYMENT_METHOD_LABEL } from '@plataforma/domain';
+import { AsyncBoundary, Badge, Price, Row, Skeleton, useRealtime, type Tone } from '@plataforma/ui-web';
 import { useStore } from '../store-context';
 
 /**
@@ -93,6 +95,92 @@ function PreparationBar({ order }: { order: OrderDetail['order'] }) {
   );
 }
 
+/**
+ * PAGAMENTO.
+ *
+ * Um BR Code Pix estático não avisa ninguém quando o dinheiro cai — só a loja
+ * confirmando manualmente muda este cartão (docs/ARQUITETURA-DELTA.md, ADR-0008).
+ * Por isso a mensagem nunca promete confirmação automática: ela diz o que
+ * realmente vai acontecer, e a tela já está de olho no evento `payment.confirmed`
+ * via `useRealtime` — quando a loja confirmar, o cartão troca sozinho.
+ */
+function PaymentCard({ payment, totalCents }: { payment: PaymentView; totalCents: number }) {
+  const [qr, setQr] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    setQr(null);
+    if (payment.method !== 'PIX' || !payment.pixBrcode) return;
+    let cancelled = false;
+    void QRCode.toDataURL(payment.pixBrcode, { width: 240, margin: 1, errorCorrectionLevel: 'M' })
+      .then((url) => {
+        if (!cancelled) setQr(url);
+      })
+      .catch(() => {
+        // Sem QR, o código "copia e cola" abaixo continua funcionando sozinho.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [payment.method, payment.pixBrcode]);
+
+  async function copy() {
+    if (!payment.pixBrcode) return;
+    try {
+      await navigator.clipboard.writeText(payment.pixBrcode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // Sem permissão de área de transferência: o código está selecionável na tela.
+    }
+  }
+
+  if (payment.status === 'CONFIRMED') {
+    return (
+      <div className="ui-card pay pay--ok">
+        <Badge tone="success">Pagamento confirmado</Badge>
+      </div>
+    );
+  }
+
+  if (payment.method !== 'PIX') {
+    return (
+      <div className="ui-card pay pay--ok">
+        <strong>Pagamento: {PAYMENT_METHOD_LABEL[payment.method]}</strong>
+        <Row label="Valor a pagar" value={<Price cents={totalCents} />} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="ui-card pay">
+      <div className="pay__head">
+        <strong>Pague com Pix</strong>
+        <Price cents={totalCents} />
+      </div>
+
+      {qr ? (
+        <img className="pay__qr" src={qr} alt="QR code Pix para pagamento" />
+      ) : (
+        <Skeleton width={200} height={200} radius={14} />
+      )}
+
+      <button type="button" className="ui-btn ui-btn--primary pay__copy" onClick={() => void copy()}>
+        {copied ? 'Código copiado!' : 'Copiar código Pix'}
+      </button>
+
+      <code className="pay__code">{payment.pixBrcode}</code>
+
+      {payment.pixKeyMasked ? <small>Chave da loja: {payment.pixKeyMasked}</small> : null}
+
+      <p className="pay__hint">
+        Pague pelo app do seu banco. A loja confirma o recebimento manualmente — esta tela
+        atualiza sozinha assim que isso acontecer.
+      </p>
+    </div>
+  );
+}
+
 export function OrderPage() {
   const { orderId } = useParams();
   const { api } = useStore();
@@ -153,15 +241,11 @@ export function OrderPage() {
               </Badge>
 
               <PreparationBar order={order.order} />
-              {order.payment && order.payment.status !== 'CONFIRMED' ? (
-                <small>
-                  Pagamento:{' '}
-                  {order.payment.status === 'PENDING'
-                    ? 'na entrega'
-                    : 'aguardando confirmação da loja'}
-                </small>
-              ) : null}
             </div>
+
+            {order.payment ? (
+              <PaymentCard payment={order.payment} totalCents={order.order.totalCents} />
+            ) : null}
 
             <div className="ui-card">
               {order.items.map((item) => (
