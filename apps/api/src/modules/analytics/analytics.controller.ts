@@ -31,4 +31,24 @@ export class AnalyticsController {
       branchId: branchId || undefined,
     });
   }
+
+  /**
+   * Faturamento ao longo do tempo, comparado ao período anterior.
+   *
+   * Mesmo escopo do resumo: sem `organizationId` no parâmetro, e `branchId`
+   * apenas filtrando dentro do que o papel já permite.
+   */
+  @Get('analytics/revenue')
+  @RequirePermission('report:read')
+  async revenue(
+    @Query('days') days: string | undefined,
+    @Query('branchId') branchId: string | undefined,
+    @CurrentUser() principal: Principal | null,
+  ) {
+    if (!principal) throw unauthorized();
+    return this.analytics.revenue(principal, {
+      days: days ? Number(days) : 30,
+      branchId: branchId || undefined,
+    });
+  }
 }

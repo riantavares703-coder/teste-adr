@@ -1,134 +1,295 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { MenuProduct } from '@plataforma/client';
+import type { MenuCategory, MenuProduct } from '@plataforma/client';
 import { describeOpenState } from '@plataforma/domain';
-import { Badge, Price } from '@plataforma/ui-web';
+import { EmptyState, Price, Skeleton } from '@plataforma/ui-web';
 import { useStore } from '../store-context';
 import { useCart } from '../cart-context';
+import { ProductSheet } from '../components/ProductSheet';
 
 /**
  * CARDÁPIO.
  *
- * Primeira tela depois do QR code. Precisa responder em segundos, no celular de
- * quem está em pé no balcão: sem carrossel, sem animação de entrada, produto e
- * preço visíveis de imediato.
+ * Primeira tela depois do QR code, quase sempre num celular, quase sempre com
+ * alguém de pé. Três decisões carregam o resto:
+ *
+ *  1. As seções ficam FIXAS no topo e acompanham a rolagem. Num cardápio de
+ *     cinquenta itens, rolar procurando "Bebidas" é o atrito principal.
+ *  2. Produto com opções abre uma FOLHA, não outra página: escolher o tamanho
+ *     não deveria custar o lugar da rolagem.
+ *  3. A barra do carrinho só aparece quando há algo nele, e cresce ao receber
+ *     item — a confirmação de que o toque funcionou.
  */
 export function MenuPage() {
   const { menu } = useStore();
   const { count, subtotalCents, add } = useCart();
 
-  const categories = menu.categories.filter((c) => c.products.length > 0);
+  const [openProduct, setOpenProduct] = useState<MenuProduct | null>(null);
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [bumped, setBumped] = useState(false);
+
+  // Produto criado sem seção ("Sem seção" é a opção padrão do formulário) não
+  // pode simplesmente desaparecer do cardápio: o backend já separa esses itens
+  // em `uncategorized` — aqui eles ganham uma seção "Outros" em vez de sumir.
+  const categories = useMemo<MenuCategory[]>(() => {
+    const withProducts = menu.categories.filter((category) => category.products.length > 0);
+    if (menu.uncategorized.length === 0) return withProducts;
+    return [
+      ...withProducts,
+      { id: '__sem-secao', name: 'Outros', description: null, products: menu.uncategorized },
+    ];
+  }, [menu.categories, menu.uncategorized]);
+
+  const sectionRefs = useRef(new Map<string, HTMLElement>());
+  const canOrder = menu.open.isOpen && menu.branch.status === 'ACTIVE';
+
+  /**
+   * Marca a seção visível conforme a página rola.
+   *
+   * A margem superior desconta o cabeçalho fixo: sem ela, a seção só é
+   * considerada ativa quando já passou por baixo da barra, e o destaque fica
+   * sempre uma seção atrasado.
+   */
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (visible) setActiveCategory(visible.target.id.replace('secao-', ''));
+      },
+      { rootMargin: '-140px 0px -70% 0px', threshold: 0 },
+    );
+
+    for (const element of sectionRefs.current.values()) observer.observe(element);
+    return () => observer.disconnect();
+  }, [categories]);
+
+  function addProduct(product: MenuProduct) {
+    if (product.hasOptions) {
+      setOpenProduct(product);
+      return;
+    }
+    add({
+      product,
+      branchId: menu.branch.id,
+      organizationSlug: menu.branch.slug,
+      branchSlug: menu.branch.slug,
+      quantity: 1,
+      selectedOptions: [],
+    });
+    setBumped(true);
+    setTimeout(() => setBumped(false), 400);
+  }
+
+  function scrollToCategory(id: string) {
+    sectionRefs.current.get(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 
   return (
-    <main className="store">
-      <header className="store__header">
-        {menu.theme.logoUrl ? (
-          <img className="store__logo" src={menu.theme.logoUrl} alt="" />
-        ) : null}
-        <div>
-          <h1>{menu.theme.displayName ?? menu.branch.name}</h1>
-          {menu.theme.tagline ? <p>{menu.theme.tagline}</p> : null}
+    <main className="menu">
+      <header className="menu__hero">
+        <div className="menu__hero-bg" aria-hidden="true" />
+        <div className="menu__hero-content">
+          {menu.theme.logoUrl ? (
+            <img className="menu__logo" src={menu.theme.logoUrl} alt="" />
+          ) : (
+            <div className="menu__logo menu__logo--letter" aria-hidden="true">
+              {(menu.theme.displayName ?? menu.branch.name).charAt(0)}
+            </div>
+          )}
+
+          <div className="menu__hero-text">
+            <h1>{menu.theme.displayName ?? menu.branch.name}</h1>
+            {menu.theme.tagline ? <p>{menu.theme.tagline}</p> : null}
+
+            <div className="menu__meta">
+              <span className={`menu__dot ${canOrder ? 'menu__dot--open' : 'menu__dot--closed'}`} />
+              <span>{canOrder ? describeOpenState(menu.open) : 'Fechada agora'}</span>
+              {menu.settings ? (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span>{menu.settings.preparationTimeMinutes} min de preparo</span>
+                </>
+              ) : null}
+            </div>
+          </div>
         </div>
       </header>
 
-      {/* Fechada por horário OU desativada pelo lojista: o cliente precisa
-          saber antes de montar o carrinho, não no fim do checkout. */}
-      {!menu.open.isOpen || menu.branch.status !== 'ACTIVE' ? (
-        <div className="ui-notice ui-notice--warning" role="alert">
-          <strong className="ui-notice__title">Loja fechada</strong>
-          <div>
+      {!canOrder ? (
+        <div className="menu__closed" role="status">
+          <strong>A loja está fechada</strong>
+          <span>
             {menu.branch.status !== 'ACTIVE'
-              ? 'A loja não está aceitando pedidos no momento.'
+              ? 'Não estamos aceitando pedidos no momento.'
               : describeOpenState(menu.open)}{' '}
-            Você pode ver o cardápio, mas não dá para pedir agora.
-          </div>
+            Você pode ver o cardápio à vontade.
+          </span>
         </div>
       ) : null}
 
+      {categories.length > 1 ? (
+        <nav className="menu__nav" aria-label="Seções do cardápio">
+          <ul>
+            {categories.map((category) => (
+              <li key={category.id}>
+                <button
+                  type="button"
+                  className={activeCategory === category.id ? 'menu__tab menu__tab--on' : 'menu__tab'}
+                  aria-current={activeCategory === category.id ? 'true' : undefined}
+                  onClick={() => scrollToCategory(category.id)}
+                >
+                  {category.name}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      ) : null}
+
+      {categories.length === 0 ? (
+        <EmptyState
+          icon="🍽️"
+          title="Cardápio em preparação"
+          description="Essa loja ainda está montando o cardápio. Volte em breve."
+        />
+      ) : null}
+
       {categories.map((category) => (
-        <section key={category.id}>
-          <div className="ui-section-header">
-            <h2>{category.name}</h2>
-          </div>
-          <ul className="store__grid">
+        <section
+          key={category.id}
+          id={`secao-${category.id}`}
+          ref={(element) => {
+            if (element) sectionRefs.current.set(category.id, element);
+            else sectionRefs.current.delete(category.id);
+          }}
+          className="menu__section"
+          aria-labelledby={`titulo-${category.id}`}
+        >
+          <h2 id={`titulo-${category.id}`} className="menu__section-title">
+            {category.name}
+          </h2>
+
+          <ul className="menu__grid">
             {category.products.map((product) => (
-              <ProductCard key={product.id} product={product} onAdd={add} />
+              <ProductCard
+                key={product.id}
+                product={product}
+                disabled={!canOrder}
+                onPick={() => addProduct(product)}
+              />
             ))}
           </ul>
         </section>
       ))}
 
-      {/* Barra fixa: some quando não há nada no carrinho, para não roubar
-          espaço vertical num cardápio longo visto no celular. */}
       {count > 0 ? (
-        <div className="store__bar">
-          <Link className="ui-btn ui-btn--primary ui-btn--full" to="carrinho">
-            Ver carrinho · {count} {count === 1 ? 'item' : 'itens'} ·{' '}
+        <div className="menu__cartbar">
+          <Link className={`menu__cartlink ${bumped ? 'menu__cartlink--bump' : ''}`} to="carrinho">
+            <span className="menu__cartcount">{count}</span>
+            <span className="menu__cartlabel">Ver carrinho</span>
             <Price cents={subtotalCents} />
           </Link>
         </div>
       ) : null}
+
+      <ProductSheet
+        product={openProduct}
+        onClose={() => setOpenProduct(null)}
+        onAdded={() => {
+          setOpenProduct(null);
+          setBumped(true);
+          setTimeout(() => setBumped(false), 400);
+        }}
+      />
     </main>
   );
 }
 
 function ProductCard({
   product,
-  onAdd,
+  disabled,
+  onPick,
 }: {
   product: MenuProduct;
-  onAdd: ReturnType<typeof useCart>['add'];
+  disabled: boolean;
+  onPick: () => void;
 }) {
-  const { menu, organizationSlug, branchSlug } = useStore();
   const available = product.availability.isPurchasable;
+  const blocked = disabled || !available;
 
   return (
-    <li className={`ui-card store__product ${available ? '' : 'store__product--out'}`}>
-      {product.thumbUrl ? (
-        <img className="store__thumb" src={product.thumbUrl} alt="" loading="lazy" />
-      ) : null}
+    <li>
+      {/*
+       * O cartão INTEIRO é o alvo, não só um botão no canto. Num celular, o
+       * polegar acerta um retângulo grande; um botão de 44px exige mira.
+       */}
+      <button
+        type="button"
+        className={`card ${blocked ? 'card--blocked' : ''}`}
+        disabled={blocked}
+        aria-label={
+          !available
+            ? `${product.name}, esgotado`
+            : product.hasOptions
+              ? `${product.name}, escolher opções`
+              : `Adicionar ${product.name}`
+        }
+        onClick={onPick}
+      >
+        <div className="card__body">
+          <div className="card__head">
+            <h3>{product.name}</h3>
+            {product.isFeatured ? <span className="card__star" aria-label="Destaque">★</span> : null}
+          </div>
 
-      <div className="store__product-body">
-        <div className="store__product-title">
-          <h3>{product.name}</h3>
-          {product.isFeatured ? <Badge tone="info">Destaque</Badge> : null}
+          {product.description ? <p className="card__desc">{product.description}</p> : null}
+
+          <div className="card__foot">
+            <Price cents={product.priceCents} className="card__price" />
+            {product.hasOptions ? <span className="card__hint">escolher</span> : null}
+          </div>
         </div>
-        {product.description ? <p>{product.description}</p> : null}
-        <Price cents={product.priceCents} />
-      </div>
 
-      {/* Produto com opções vai para a tela dele: adicionar direto criaria uma
-          escolha inválida, recusada só lá no checkout. */}
-      {product.hasOptions ? (
-        <Link
-          className="ui-btn ui-btn--primary store__add"
-          to={available ? `produto/${product.id}` : '.'}
-          aria-disabled={!available}
-          // Rótulo com o nome do produto: numa lista, "Escolher" repetido
-          // dezenas de vezes é inútil para quem usa leitor de tela.
-          aria-label={available ? `Escolher opções de ${product.name}` : `${product.name} indisponível`}
-        >
-          {available ? 'Escolher' : 'Esgotado'}
-        </Link>
-      ) : (
-        <button
-          type="button"
-          className="ui-btn ui-btn--primary store__add"
-          disabled={!available}
-          aria-label={available ? `Adicionar ${product.name}` : `${product.name} indisponível`}
-          onClick={() =>
-            onAdd({
-              product,
-              branchId: menu.branch.id,
-              organizationSlug,
-              branchSlug,
-              quantity: 1,
-              selectedOptions: [],
-            })
-          }
-        >
-          {available ? 'Adicionar' : 'Esgotado'}
-        </button>
-      )}
+        {product.thumbUrl ? (
+          <img className="card__img" src={product.thumbUrl} alt="" loading="lazy" />
+        ) : null}
+
+        {!available ? <span className="card__soldout">Esgotado</span> : null}
+
+        {!blocked ? (
+          <span className="card__plus" aria-hidden="true">
+            +
+          </span>
+        ) : null}
+      </button>
     </li>
+  );
+}
+
+/** Esqueleto do cardápio, com a mesma forma dos cartões reais. */
+export function MenuSkeleton() {
+  return (
+    <main className="menu">
+      <div className="menu__hero menu__hero--skeleton" />
+      <div className="menu__section">
+        <Skeleton width={140} height={24} />
+        <ul className="menu__grid">
+          {[0, 1, 2, 3].map((index) => (
+            <li key={index}>
+              <div className="card card--skeleton">
+                <div className="card__body">
+                  <Skeleton width="70%" height={18} />
+                  <Skeleton width="90%" height={14} />
+                  <Skeleton width={80} height={18} />
+                </div>
+                <Skeleton width={92} height={92} radius={14} />
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </main>
   );
 }

@@ -34,7 +34,18 @@ import { TokenService } from '../auth/token.service.js';
 export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server?: Server;
   private readonly logger = new Logger('Realtime');
-  private readonly principals = new Map<string, Principal>();
+
+  /**
+   * Guarda a PROMESSA da identidade, não a identidade pronta.
+   *
+   * Resolver o principal exige verificar o token e consultar o banco, e nesse
+   * intervalo o cliente já pode ter enviado `join:branch` — o Socket.IO não
+   * segura as mensagens esperando o tratador de conexão terminar. Guardando a
+   * promessa (de forma síncrona, antes de qualquer await), quem chega cedo
+   * espera pela mesma resolução em vez de encontrar o mapa vazio e levar um
+   * "não autorizado" que nada tem a ver com autorização.
+   */
+  private readonly principals = new Map<string, Promise<Principal | null>>();
 
   constructor(
     @Inject(TokenService) private readonly tokens: TokenService,
@@ -43,19 +54,28 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
+    // Registrado ANTES de qualquer await: é isso que fecha a corrida.
+    const resolution = this.resolvePrincipal(client);
+    this.principals.set(client.id, resolution);
+
+    const principal = await resolution;
+    if (!principal) {
+      this.principals.delete(client.id);
+      client.disconnect(true);
+      return;
+    }
+    // Sala pessoal: notificações direcionadas ao usuário.
+    await client.join(`user:${principal.userId}`);
+  }
+
+  private async resolvePrincipal(client: Socket): Promise<Principal | null> {
     try {
       const token = (client.handshake.auth as { token?: string } | undefined)?.token;
-      if (!token) {
-        client.disconnect(true);
-        return;
-      }
+      if (!token) return null;
       const claims = await this.tokens.verifyAccessToken(token);
-      const principal = await this.auth.resolvePrincipal(claims);
-      this.principals.set(client.id, principal);
-      // Sala pessoal: notificações direcionadas ao usuário.
-      await client.join(`user:${principal.userId}`);
+      return await this.auth.resolvePrincipal(claims);
     } catch {
-      client.disconnect(true);
+      return null;
     }
   }
 
@@ -69,7 +89,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     @ConnectedSocket() client: Socket,
     @MessageBody() body: { branchId?: string },
   ): Promise<{ ok: boolean; reason?: string }> {
-    const principal = this.principals.get(client.id);
+    const principal = await this.principals.get(client.id);
     if (!principal || !body?.branchId) return { ok: false, reason: 'NAO_AUTORIZADO' };
     if (principal.userType !== 'STAFF') return { ok: false, reason: 'NAO_AUTORIZADO' };
     if (!principal.permissions.has('order:read')) return { ok: false, reason: 'NAO_AUTORIZADO' };
@@ -85,7 +105,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     @ConnectedSocket() client: Socket,
     @MessageBody() body: { orderId?: string; branchId?: string },
   ): Promise<{ ok: boolean; reason?: string }> {
-    const principal = this.principals.get(client.id);
+    const principal = await this.principals.get(client.id);
     if (!principal || !body?.orderId) return { ok: false, reason: 'NAO_AUTORIZADO' };
 
     if (principal.userType === 'STAFF') {

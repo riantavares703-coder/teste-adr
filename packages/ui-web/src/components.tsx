@@ -156,6 +156,38 @@ export function Field({ label, hint, error, id, ...rest }: FieldProps) {
 
 // --- Estados ----------------------------------------------------------------
 
+/**
+ * Esqueleto de carregamento.
+ *
+ * Usado sempre que a FORMA do conteúdo é conhecida de antemão. O spinner diz
+ * "espere"; o esqueleto mostra o que vem e onde, e a espera parece menor sem
+ * enganar ninguém — o layout final é exatamente esse.
+ */
+export function Skeleton({
+  width,
+  height = 16,
+  radius,
+  className = '',
+}: {
+  width?: number | string;
+  height?: number | string;
+  radius?: number | string;
+  className?: string;
+}) {
+  return (
+    <span
+      className={`ui-skeleton ${className}`}
+      aria-hidden="true"
+      style={{
+        display: 'block',
+        width: width ?? '100%',
+        height,
+        borderRadius: radius,
+      }}
+    />
+  );
+}
+
 export function LoadingState({ label = 'Carregando…' }: { label?: string }) {
   return (
     <div className="ui-state" role="status">

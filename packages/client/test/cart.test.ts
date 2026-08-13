@@ -21,6 +21,7 @@ const burger: MenuProduct = {
   categoryId: 'c1',
   isFeatured: true,
   allowsCustomerNotes: true,
+  hasOptions: false,
   imageUrl: '/v1/media/a.webp',
   thumbUrl: '/v1/media/a_sm.webp',
   availability: { status: 'AVAILABLE', isPurchasable: true, availableQuantity: null },

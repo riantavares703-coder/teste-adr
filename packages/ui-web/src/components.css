@@ -1,27 +1,40 @@
-/* Aparência dos componentes de ui-web. Cor sempre por variável do tema. */
+/* Componentes de ui-web. Cor sempre por variável do tema da franquia. */
 
 /* --- Botão ---------------------------------------------------------------- */
 
 .ui-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--sp-2);
   min-height: var(--touch-min);
   padding: 0 var(--sp-5);
-  border: 1.5px solid transparent;
+  border: none;
   border-radius: var(--radius-md);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-base);
+  letter-spacing: var(--tracking-normal);
+  text-decoration: none;
   cursor: pointer;
-  transition: filter 0.15s ease, opacity 0.15s ease;
+  /* Sem seleção acidental de texto ao tocar rápido duas vezes no celular. */
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out),
+    opacity var(--dur-base) var(--ease-out);
 }
 
-.ui-btn:hover:not(:disabled) {
-  filter: brightness(0.94);
+/* Afundar ao pressionar dá a confirmação tátil que falta no toque. */
+.ui-btn:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
-.ui-btn:disabled {
-  opacity: 0.55;
+.ui-btn:disabled,
+.ui-btn[aria-disabled='true'] {
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
@@ -32,22 +45,38 @@
 .ui-btn--primary {
   background: var(--c-primary);
   color: var(--c-on-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.ui-btn--primary:hover:not(:disabled) {
+  box-shadow: var(--shadow-md);
+  filter: brightness(1.06);
 }
 
 .ui-btn--secondary {
   background: var(--c-card);
   color: var(--c-text);
-  border-color: var(--c-border);
+  box-shadow: inset 0 0 0 1.5px var(--c-border);
+}
+
+.ui-btn--secondary:hover:not(:disabled) {
+  background: var(--surface-hover);
 }
 
 .ui-btn--ghost {
   background: transparent;
   color: var(--c-primary);
+  padding: 0 var(--sp-3);
+}
+
+.ui-btn--ghost:hover:not(:disabled) {
+  background: var(--tint-primary);
 }
 
 .ui-btn--danger {
   background: var(--c-danger);
   color: #fff;
+  box-shadow: var(--shadow-sm);
 }
 
 /* --- Carregando ----------------------------------------------------------- */
@@ -74,13 +103,35 @@
   }
 }
 
+/*
+ * Esqueleto no lugar de spinner sempre que a forma do conteúdo é conhecida.
+ * O spinner diz "espere"; o esqueleto já mostra o que vai chegar e a espera
+ * parece menor — sem enganar ninguém, porque o layout final é o mesmo.
+ */
+.ui-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface-sunken) 25%,
+    var(--surface-hover) 37%,
+    var(--surface-sunken) 63%
+  );
+  background-size: 200% 100%;
+  animation: ui-shimmer 1.4s linear infinite;
+  border-radius: var(--radius-sm);
+}
+
 /* --- Superfícies ---------------------------------------------------------- */
 
 .ui-card {
   background: var(--c-card);
-  border: 1px solid var(--c-border);
   border-radius: var(--radius-lg);
   padding: var(--sp-4);
+  box-shadow: var(--shadow-sm);
+}
+
+.ui-card--flat {
+  box-shadow: none;
+  border: 1px solid var(--c-border);
 }
 
 .ui-section-header {
@@ -88,12 +139,12 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-3);
-  margin: var(--sp-5) 0 var(--sp-3);
+  margin: var(--sp-6) 0 var(--sp-3);
 }
 
-.ui-section-header h2 {
+.ui-section-header h2,
+.ui-section-header h3 {
   margin: 0;
-  font-size: 1.05rem;
 }
 
 .ui-row {
@@ -109,20 +160,18 @@
   border-bottom: none;
 }
 
-.ui-row__label {
-  color: var(--c-text);
-}
-
 .ui-row__value {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 /* --- Dados ---------------------------------------------------------------- */
 
 .ui-price {
-  font-weight: 700;
+  font-weight: var(--weight-bold);
   font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tracking-tight);
 }
 
 .ui-stat {
@@ -130,50 +179,57 @@
   flex-direction: column;
   gap: var(--sp-1);
   background: var(--c-card);
-  border: 1px solid var(--c-border);
   border-radius: var(--radius-lg);
   padding: var(--sp-4);
   min-width: 0;
+  box-shadow: var(--shadow-sm);
 }
 
 .ui-stat__value {
-  font-size: 1.6rem;
-  line-height: 1.1;
+  font-size: var(--text-2xl);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
   font-variant-numeric: tabular-nums;
 }
 
 .ui-stat__label {
-  font-size: 0.75rem;
-  letter-spacing: 0.04em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
   color: var(--c-muted);
+  font-weight: var(--weight-semibold);
 }
 
 .ui-badge {
-  display: inline-block;
-  padding: 2px var(--sp-3);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 3px var(--sp-3);
   border-radius: var(--radius-pill);
-  font-size: 0.78rem;
-  font-weight: 600;
-  border: 1px solid var(--c-border);
-  background: var(--c-card);
-  color: var(--c-text);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  background: var(--surface-sunken);
+  color: var(--c-muted);
+  white-space: nowrap;
 }
 
+/* Fundo tingido em vez de borda: lê melhor de longe, que é o caso do balcão. */
 .ui-badge--info {
-  border-color: var(--c-primary);
+  background: var(--tint-primary);
   color: var(--c-primary);
 }
 .ui-badge--success {
-  border-color: var(--c-success);
+  background: var(--tint-success);
   color: var(--c-success);
 }
 .ui-badge--warning {
-  border-color: var(--c-warning);
-  color: #8a5a00;
+  background: var(--tint-warning);
+  color: var(--c-warning);
 }
 .ui-badge--danger {
-  border-color: var(--c-danger);
+  background: var(--tint-danger);
   color: var(--c-danger);
 }
 
@@ -183,26 +239,31 @@
   gap: var(--sp-1);
   padding: var(--sp-3) var(--sp-4);
   border-radius: var(--radius-md);
+  background: var(--surface-sunken);
   border-left: 4px solid var(--c-border);
-  background: var(--c-card);
   margin: var(--sp-3) 0;
+  animation: ui-fade-up var(--dur-slow) var(--ease-out);
 }
 
 .ui-notice--info {
   border-left-color: var(--c-primary);
+  background: var(--tint-primary);
 }
 .ui-notice--success {
   border-left-color: var(--c-success);
+  background: var(--tint-success);
 }
 .ui-notice--warning {
   border-left-color: var(--c-warning);
+  background: var(--tint-warning);
 }
 .ui-notice--danger {
   border-left-color: var(--c-danger);
+  background: var(--tint-danger);
 }
 
 .ui-notice__title {
-  font-weight: 700;
+  font-weight: var(--weight-bold);
 }
 
 /* --- Formulário ----------------------------------------------------------- */
@@ -215,17 +276,26 @@
 }
 
 .ui-field label {
-  font-weight: 600;
-  font-size: 0.9rem;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-sm);
 }
 
 .ui-input {
   min-height: var(--touch-min);
-  padding: 0 var(--sp-3);
+  padding: 0 var(--sp-4);
   border: 1.5px solid var(--c-border);
   border-radius: var(--radius-md);
   background: var(--c-card);
   width: 100%;
+  transition:
+    border-color var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out);
+}
+
+.ui-input:focus {
+  border-color: var(--c-primary);
+  box-shadow: 0 0 0 4px var(--tint-primary);
+  outline: none;
 }
 
 .ui-input--error {
@@ -234,11 +304,13 @@
 
 .ui-field__hint {
   color: var(--c-muted);
+  font-size: var(--text-sm);
 }
 
 .ui-field__error {
   color: var(--c-danger);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-sm);
 }
 
 /* --- Estados -------------------------------------------------------------- */
@@ -249,9 +321,10 @@
   align-items: center;
   justify-content: center;
   gap: var(--sp-3);
-  padding: var(--sp-7) var(--sp-4);
+  padding: var(--sp-8) var(--sp-4);
   text-align: center;
   color: var(--c-muted);
+  animation: ui-fade-up var(--dur-slow) var(--ease-out);
 }
 
 .ui-state h3 {
@@ -265,6 +338,112 @@
 }
 
 .ui-state__icon {
-  font-size: 2.5rem;
+  font-size: 2.75rem;
   line-height: 1;
+}
+
+/* --- Folha inferior ------------------------------------------------------- */
+
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-sheet);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.sheet__scrim {
+  position: absolute;
+  inset: 0;
+  border: none;
+  padding: 0;
+  background: var(--c-overlay);
+  cursor: pointer;
+  animation: sheet-scrim var(--dur-base) var(--ease-out);
+}
+
+@keyframes sheet-scrim {
+  from {
+    opacity: 0;
+  }
+}
+
+.sheet__panel {
+  position: relative;
+  width: 100%;
+  max-width: 560px;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-card);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  box-shadow: var(--shadow-xl);
+  animation: ui-slide-up var(--dur-slow) var(--ease-out);
+}
+
+/* Em tela larga a folha vira um cartão centrado: colada embaixo, num monitor,
+   ficaria longe demais do olhar. */
+@media (min-width: 720px) {
+  .sheet {
+    align-items: center;
+  }
+  .sheet__panel {
+    border-radius: var(--radius-xl);
+    max-height: 86vh;
+    animation: ui-fade-up var(--dur-base) var(--ease-out);
+  }
+}
+
+.sheet__grip {
+  width: 40px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--c-border);
+  margin: var(--sp-3) auto var(--sp-1);
+  flex-shrink: 0;
+}
+
+.sheet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5) var(--sp-2);
+  flex-shrink: 0;
+}
+
+.sheet__close {
+  width: var(--touch-min);
+  height: var(--touch-min);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+  color: var(--c-muted);
+  cursor: pointer;
+  font-size: var(--text-base);
+  flex-shrink: 0;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.sheet__close:hover {
+  background: var(--surface-press);
+  color: var(--c-text);
+}
+
+.sheet__body {
+  padding: 0 var(--sp-5) var(--sp-4);
+  overflow-y: auto;
+  /* Rolagem com inércia no iOS e sem "corrente" para a página de trás. */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.sheet__foot {
+  padding: var(--sp-4) var(--sp-5);
+  padding-bottom: calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--c-border);
+  background: var(--c-card);
+  flex-shrink: 0;
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
 }

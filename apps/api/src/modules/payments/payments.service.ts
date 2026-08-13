@@ -209,6 +209,52 @@ export class PaymentsService {
   // ---------------------------------------------------------------------------
 
   /**
+   * Estado atual da chave Pix para a tela de configurações.
+   *
+   * NUNCA devolve a chave em si — só o suficiente para o operador confirmar
+   * "sim, é essa a chave certa" (tipo + últimos 4 dígitos), na mesma máscara
+   * usada na tela de pagamento do cliente. Ler aqui não descriptografa nada.
+   */
+  async getPixSettings(
+    principal: Principal,
+    branchId: string,
+  ): Promise<{
+    configured: boolean;
+    keyType: string | null;
+    keyMasked: string | null;
+    merchantName: string | null;
+    merchantCity: string | null;
+  }> {
+    await this.branchAccess.assertAccess(principal, branchId);
+
+    return this.db.withTenant(toTenantContext(principal), async (tx) => {
+      const rows = await tx
+        .select()
+        .from(s.pixSettings)
+        .where(and(eq(s.pixSettings.branchId, branchId), eq(s.pixSettings.isActive, true)))
+        .limit(1);
+
+      const config = rows[0];
+      if (!config) {
+        return {
+          configured: false,
+          keyType: null,
+          keyMasked: null,
+          merchantName: null,
+          merchantCity: null,
+        };
+      }
+      return {
+        configured: true,
+        keyType: config.keyType,
+        keyMasked: `•••${config.keyLast4}`,
+        merchantName: config.merchantName,
+        merchantCity: config.merchantCity,
+      };
+    });
+  }
+
+  /**
    * Trocar a chave Pix redireciona TODO o dinheiro que entra. É a alteração de
    * maior impacto financeiro do sistema — exige `pix_settings:update`, é
    * auditada e notifica o administrador da franquia.

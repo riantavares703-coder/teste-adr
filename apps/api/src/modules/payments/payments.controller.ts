@@ -53,6 +53,17 @@ export class PaymentsController {
     });
   }
 
+  /** Estado atual (mascarado) da chave Pix, para a tela de configurações. */
+  @Get('branches/:branchId/pix-settings')
+  @RequirePermission('pix_settings:read')
+  async getPix(
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @CurrentUser() principal: Principal | null,
+  ) {
+    if (!principal) throw unauthorized();
+    return this.payments.getPixSettings(principal, branchId);
+  }
+
   /** Configuração da chave Pix da unidade. */
   @Put('branches/:branchId/pix-settings')
   @RequirePermission('pix_settings:update')

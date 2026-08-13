@@ -2,7 +2,6 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { CartProvider } from './cart-context';
 import { StoreProvider } from './store-context';
 import { MenuPage } from './pages/MenuPage';
-import { ProductPage } from './pages/ProductPage';
 import { CartPage } from './pages/CartPage';
 import { CheckoutPage } from './pages/CheckoutPage';
 import { OrderPage } from './pages/OrderPage';
@@ -24,7 +23,6 @@ export function App() {
             <CartProvider>
               <Routes>
                 <Route index element={<MenuPage />} />
-                <Route path="produto/:productId" element={<ProductPage />} />
                 <Route path="carrinho" element={<CartPage />} />
                 <Route path="checkout" element={<CheckoutPage />} />
                 <Route path="pedido/:orderId" element={<OrderPage />} />

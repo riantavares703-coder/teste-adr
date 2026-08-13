@@ -8,7 +8,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@plataforma/domain": "workspace:*"
+    "@plataforma/domain": "workspace:*",
+    "socket.io-client": "^4.8.1"
   },
   "peerDependencies": {
     "react": "^18.3.1"

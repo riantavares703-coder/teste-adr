@@ -438,7 +438,16 @@ function openBrowser(url) {
     process.platform === 'darwin' ? ['open', [url]]
     : IS_WINDOWS ? ['cmd', ['/c', 'start', '', url]]
     : ['xdg-open', [url]];
-  spawn(command, args, { stdio: 'ignore', detached: true }).unref();
+  const child = spawn(command, args, { stdio: 'ignore', detached: true });
+  // Sem handler aqui, a ausência do abridor (comum em servidor/container, ou
+  // Windows sem programa padrão associado) derruba o processo INTEIRO com uma
+  // exceção não tratada — e junto dele o supervisor do Postgres e da API, que
+  // ficam órfãos. O sistema já subiu e o endereço já foi impresso: não abrir
+  // sozinho é um aviso, não uma falha.
+  child.on('error', () => {
+    log('  (não foi possível abrir o navegador automaticamente — use o endereço acima)');
+  });
+  child.unref();
 }
 
 // ---------------------------------------------------------------------------

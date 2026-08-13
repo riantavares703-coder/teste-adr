@@ -155,6 +155,25 @@ export interface ModifierOptionInput {
   position?: number;
 }
 
+export interface PeriodTotals {
+  orderCount: number;
+  revenueCents: number;
+  averageTicketCents: number;
+}
+
+export interface RevenueReport {
+  periodDays: number;
+  since: string;
+  bucket: 'day' | 'week' | 'month';
+  scope: 'ORGANIZATION' | 'BRANCHES';
+  current: PeriodTotals;
+  /** Mesma duração, imediatamente antes do período atual. */
+  previous: PeriodTotals;
+  /** `null` quando não houve movimento antes: não há base de comparação. */
+  change: { revenuePercent: number | null; orderPercent: number | null };
+  series: Array<{ date: string; orderCount: number; revenueCents: number }>;
+}
+
 export interface StoreSettings {
   branchId: string;
   preparationTimeMinutes: number;
@@ -288,6 +307,14 @@ export interface PaymentView {
   confirmedAt: string | null;
 }
 
+export interface PixSettingsView {
+  configured: boolean;
+  keyType: string | null;
+  keyMasked: string | null;
+  merchantName: string | null;
+  merchantCity: string | null;
+}
+
 export interface OrderDetail {
   order: Order;
   items: OrderItem[];
@@ -354,6 +381,17 @@ export class ApiClient {
 
   setAccessToken(token: string | null): void {
     this.accessToken = token;
+  }
+
+  /**
+   * Token atual, para o handshake do WebSocket.
+   *
+   * Getter, e não cópia guardada por quem usa: o token é curto e é renovado por
+   * dentro do cliente. Uma cópia ficaria vencida na primeira reconexão, e o
+   * socket seria recusado exatamente quando mais precisa voltar.
+   */
+  get currentAccessToken(): string | null {
+    return this.accessToken;
   }
 
   async saveSession(session: Session): Promise<void> {
@@ -688,6 +726,14 @@ export class ApiClient {
   }
 
   /** Indicadores consolidados. Sem `branchId`, o servidor decide o escopo. */
+  getRevenue(options: { days?: number; branchId?: string } = {}): Promise<RevenueReport> {
+    const params = new URLSearchParams();
+    if (options.days) params.set('days', String(options.days));
+    if (options.branchId) params.set('branchId', options.branchId);
+    const query = params.toString();
+    return this.request('GET', `/v1/analytics/revenue${query ? `?${query}` : ''}`);
+  }
+
   getAnalytics(options: { days?: number; branchId?: string } = {}): Promise<AnalyticsSummary> {
     const query = new URLSearchParams({ days: String(options.days ?? 30) });
     if (options.branchId) query.set('branchId', options.branchId);
@@ -701,6 +747,10 @@ export class ApiClient {
     return this.request<{ keyMasked: string }>('PUT', `/v1/branches/${branchId}/pix-settings`, {
       body,
     });
+  }
+
+  getPixSettings(branchId: string): Promise<PixSettingsView> {
+    return this.request('GET', `/v1/branches/${branchId}/pix-settings`);
   }
 
   async uploadProductImage(
