@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { MenuProduct } from '@plataforma/client';
+import type { MenuCategory, MenuProduct } from '@plataforma/client';
 import { describeOpenState } from '@plataforma/domain';
-import { Price, Skeleton } from '@plataforma/ui-web';
+import { EmptyState, Price, Skeleton } from '@plataforma/ui-web';
 import { useStore } from '../store-context';
 import { useCart } from '../cart-context';
 import { ProductSheet } from '../components/ProductSheet';
@@ -28,10 +28,17 @@ export function MenuPage() {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [bumped, setBumped] = useState(false);
 
-  const categories = useMemo(
-    () => menu.categories.filter((category) => category.products.length > 0),
-    [menu.categories],
-  );
+  // Produto criado sem seção ("Sem seção" é a opção padrão do formulário) não
+  // pode simplesmente desaparecer do cardápio: o backend já separa esses itens
+  // em `uncategorized` — aqui eles ganham uma seção "Outros" em vez de sumir.
+  const categories = useMemo<MenuCategory[]>(() => {
+    const withProducts = menu.categories.filter((category) => category.products.length > 0);
+    if (menu.uncategorized.length === 0) return withProducts;
+    return [
+      ...withProducts,
+      { id: '__sem-secao', name: 'Outros', description: null, products: menu.uncategorized },
+    ];
+  }, [menu.categories, menu.uncategorized]);
 
   const sectionRefs = useRef(new Map<string, HTMLElement>());
   const canOrder = menu.open.isOpen && menu.branch.status === 'ACTIVE';
@@ -139,6 +146,14 @@ export function MenuPage() {
             ))}
           </ul>
         </nav>
+      ) : null}
+
+      {categories.length === 0 ? (
+        <EmptyState
+          icon="🍽️"
+          title="Cardápio em preparação"
+          description="Essa loja ainda está montando o cardápio. Volte em breve."
+        />
       ) : null}
 
       {categories.map((category) => (
