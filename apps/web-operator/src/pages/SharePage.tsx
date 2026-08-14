@@ -89,6 +89,20 @@ export function SharePage() {
                 >
                   Abrir
                 </a>
+                {/*
+                 * wa.me abre o WhatsApp com o texto pronto para escolher o
+                 * contato ou grupo — o link em si continua sendo o mesmo
+                 * endereço de rede local, então só chega a quem já está no
+                 * Wi-Fi da loja (aviso logo abaixo).
+                 */}
+                <a
+                  className="ui-btn ui-btn--secondary"
+                  href={`https://wa.me/?text=${encodeURIComponent(`Confira o cardápio da ${branch.name}: ${link.menuUrl}`)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Compartilhar no WhatsApp
+                </a>
               </div>
 
               {link.reachableFromPhones ? (
