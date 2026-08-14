@@ -242,32 +242,58 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
  *
  * Nunca devolve a mensagem crua: ela pode conter nome de tabela, coluna ou
  * detalhe interno que não ajuda quem está no balcão e ainda revela estrutura.
+ *
+ * A distinção que importa é `status === undefined` (o fetch nem chegou a
+ * completar — aí sim, "quase sempre é rede") contra "o servidor respondeu, só
+ * não temos tradução para ESTE código" — os dois eram tratados como a mesma
+ * coisa antes, e todo erro sem uma entrada exata em `byCode` (um carrinho
+ * vazio, um pedido abaixo do mínimo, uma faixa de horário inválida — qualquer
+ * 400/422 sem status explícito abaixo) caía na mensagem de rede, escondendo
+ * do cliente exatamente o motivo pelo qual o pedido foi recusado.
  */
 export function friendlyMessage(error: unknown): string {
   const code = (error as { code?: string })?.code;
   const status = (error as { status?: number })?.status;
+  const details = (error as { details?: Record<string, unknown> })?.details;
 
   const byCode: Record<string, string> = {
     PRODUTO_INDISPONIVEL: 'Esse item acabou de esgotar.',
-    ESTOQUE_INSUFICIENTE: 'Não há quantidade suficiente desse item.',
-    PRECO_DIVERGENTE: 'O preço mudou. Confira o carrinho e tente de novo.',
-    PEDIDO_NAO_ENCONTRADO: 'Pedido não encontrado.',
+    PRODUTO_SEM_ESTOQUE: 'Não há quantidade suficiente desse item.',
+    PRECO_ALTERADO: 'O preço mudou. Confira o carrinho e tente de novo.',
     UNIDADE_NAO_ENCONTRADA: 'Loja não encontrada.',
     PERMISSAO_NEGADA: 'Você não tem permissão para isso.',
     CREDENCIAIS_INVALIDAS: 'E-mail ou senha incorretos.',
     LOJA_FECHADA: 'A loja está fechada no momento.',
     PIX_NAO_CONFIGURADO: 'Pix indisponível no momento. Escolha outra forma de pagamento.',
     METODO_INDISPONIVEL: 'Essa forma de pagamento não está disponível nesta loja.',
+    CARRINHO_VAZIO: 'Seu carrinho está vazio.',
+    CARRINHO_GRANDE: 'Carrinho com itens demais. Remova alguns e tente de novo.',
+    ENTREGA_INDISPONIVEL: 'Esta loja não faz entrega.',
+    RETIRADA_INDISPONIVEL: 'Esta loja não faz retirada no balcão.',
+    ESCOLHA_INVALIDA: 'Uma opção escolhida não é mais válida. Confira o item e tente de novo.',
+    ENDERECO_OBRIGATORIO: 'Escolha um endereço de entrega.',
+    ENDERECO_NAO_ENCONTRADO: 'Endereço não encontrado.',
+    FORA_DA_AREA: 'Esse endereço está fora da área de entrega da loja.',
+    HORARIO_INVALIDO: 'Horário inválido.',
+    PEDIDO_MINIMO:
+      typeof details?.minOrderCents === 'number'
+        ? `O pedido mínimo desta loja é ${formatBRL(details.minOrderCents)}.`
+        : 'O pedido está abaixo do valor mínimo da loja.',
   };
   if (code && byCode[code]) return byCode[code];
 
-  if (status === 401) return 'Sua sessão expirou. Entre de novo.';
-  if (status === 403) return 'Você não tem permissão para isso.';
-  if (status === 404) return 'Não encontramos o que você procurou.';
-  if (status === 409) return 'Isso mudou enquanto você preenchia. Confira e tente de novo.';
-  if (status && status >= 500) return 'O sistema falhou. Tente de novo em instantes.';
+  if (status !== undefined) {
+    if (status === 401) return 'Sua sessão expirou. Entre de novo.';
+    if (status === 403) return 'Você não tem permissão para isso.';
+    if (status === 404) return 'Não encontramos o que você procurou.';
+    if (status === 409) return 'Isso mudou enquanto você preenchia. Confira e tente de novo.';
+    if (status >= 500) return 'O sistema falhou. Tente de novo em instantes.';
+    // O servidor respondeu (400, 422, 429...) mas não é um dos casos acima
+    // nem tem tradução específica em `byCode` — ainda assim NÃO é rede.
+    return 'Não foi possível concluir. Confira os dados e tente de novo.';
+  }
 
-  // Sem status nenhum: quase sempre é rede.
+  // Só agora, sem status nenhum, é que o fetch de fato não completou.
   return 'Não foi possível conectar. Verifique a internet e tente de novo.';
 }
 
