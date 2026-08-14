@@ -51,7 +51,11 @@ export class PaymentsService {
         .limit(1);
 
       const config = rows[0];
-      if (!config) {
+      // isDemoSeed: a linha existe (o seed grava uma), mas é a chave de
+      // mentira do restaurante de demonstração — tratar exatamente como "não
+      // configurado" é o que impede um cliente real de receber um QR Code
+      // apontando para uma chave que não existe em banco nenhum.
+      if (!config || config.isDemoSeed) {
         throw unprocessable(
           'PIX_NAO_CONFIGURADO',
           'Esta unidade ainda não configurou a chave Pix',
@@ -235,7 +239,10 @@ export class PaymentsService {
         .limit(1);
 
       const config = rows[0];
-      if (!config) {
+      // Mesma regra do createForOrder: a chave de demonstração conta como
+      // "não configurado" para o operador — é exatamente isso que ele precisa
+      // saber para agir (cadastrar a chave de verdade).
+      if (!config || config.isDemoSeed) {
         return {
           configured: false,
           keyType: null,
@@ -305,6 +312,9 @@ export class PaymentsService {
             merchantName: input.merchantName.slice(0, 25),
             merchantCity: input.merchantCity.slice(0, 15),
             isActive: true,
+            // Um salvamento real pelo lojista sempre substitui a chave de
+            // demonstração, mesmo que a linha tenha nascido do seed.
+            isDemoSeed: false,
             updatedBy: principal.userId,
           } as never)
           .where(eq(s.pixSettings.branchId, branchId));

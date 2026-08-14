@@ -360,6 +360,57 @@ describe('Fluxo de pedido ponta a ponta', () => {
       expect(payment.body.automaticConfirmation).toBe(false);
     });
 
+    it('chave Pix de demonstração NUNCA gera cobrança — cliente real não pode receber QR de chave inexistente', async () => {
+      await client.query('UPDATE pix_settings SET is_demo_seed = true WHERE branch_id = $1', [
+        f.branchId,
+      ]);
+
+      const created = await order({
+        branchId: f.branchId,
+        fulfillment: 'PICKUP',
+        paymentMethod: 'PIX',
+        items: [{ productId: f.productId, quantity: 1 }],
+      });
+      expect(created.status).toBe(422);
+      expect(created.body.code).toBe('PIX_NAO_CONFIGURADO');
+
+      const token = await staffToken('manager');
+      const settings = await request(baseUrl)
+        .get(`/v1/branches/${f.branchId}/pix-settings`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      // Mesmo com uma linha existindo no banco, o operador vê "não configurado"
+      // — é o sinal correto para ele agir e cadastrar a chave de verdade.
+      expect(settings.body.configured).toBe(false);
+    });
+
+    it('salvar a chave de verdade substitui a de demonstração e volta a permitir Pix', async () => {
+      await client.query('UPDATE pix_settings SET is_demo_seed = true WHERE branch_id = $1', [
+        f.branchId,
+      ]);
+      const token = await staffToken('manager');
+
+      await request(baseUrl)
+        .put(`/v1/branches/${f.branchId}/pix-settings`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ keyType: 'EMAIL', key: 'dono@restaurante.com.br', merchantName: 'Loja', merchantCity: 'SAO PAULO' })
+        .expect(200);
+
+      const created = await order({
+        branchId: f.branchId,
+        fulfillment: 'PICKUP',
+        paymentMethod: 'PIX',
+        items: [{ productId: f.productId, quantity: 1 }],
+      });
+      expect(created.status).toBe(201);
+
+      const payment = await request(baseUrl)
+        .get(`/v1/orders/${created.body.order.id}/payment`)
+        .set('Authorization', `Bearer ${customer.token}`)
+        .expect(200);
+      expect(validateBrCodeChecksum(payment.body.pixBrcode)).toBe(true);
+    });
+
     it('Pix não confirmado NÃO deixa o pedido ser confirmado', async () => {
       const created = await order({
         branchId: f.branchId,
