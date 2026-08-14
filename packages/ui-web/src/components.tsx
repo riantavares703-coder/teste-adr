@@ -256,6 +256,8 @@ export function friendlyMessage(error: unknown): string {
     PERMISSAO_NEGADA: 'Você não tem permissão para isso.',
     CREDENCIAIS_INVALIDAS: 'E-mail ou senha incorretos.',
     LOJA_FECHADA: 'A loja está fechada no momento.',
+    PIX_NAO_CONFIGURADO: 'Pix indisponível no momento. Escolha outra forma de pagamento.',
+    METODO_INDISPONIVEL: 'Essa forma de pagamento não está disponível nesta loja.',
   };
   if (code && byCode[code]) return byCode[code];
 

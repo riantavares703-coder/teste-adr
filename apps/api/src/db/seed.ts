@@ -175,11 +175,14 @@ export async function seedDemo(connectionString: string): Promise<SeedResult> {
       }
     }
 
+    // Chave de mentira: existe só para a tela de pagamento não nascer vazia.
+    // is_demo_seed=true garante que NENHUM pedido real usa esta chave — ver o
+    // guard em PaymentsService.createForOrder — até o lojista cadastrar a dele.
     const pixKey = 'demo@restaurante.local';
     await client.query(
       `INSERT INTO pix_settings (branch_id, organization_id, key_type, key_encrypted, key_last4,
-                                 key_fingerprint, merchant_name, merchant_city)
-       VALUES ($1, $2, 'EMAIL', $3, $4, $5, 'RESTAURANTE DEMO', 'SAO PAULO')`,
+                                 key_fingerprint, merchant_name, merchant_city, is_demo_seed)
+       VALUES ($1, $2, 'EMAIL', $3, $4, $5, 'RESTAURANTE DEMO', 'SAO PAULO', true)`,
       [
         branchId,
         organizationId,

@@ -226,6 +226,11 @@ export const pixSettings = pgTable('pix_settings', {
   merchantName: text('merchant_name').notNull(),
   merchantCity: text('merchant_city').notNull(),
   isActive: boolean('is_active').notNull().default(true),
+  // true só na linha que o seed de demonstração grava. Qualquer salvamento
+  // real pelo lojista (upsertPixSettings) zera este campo — é o que permite
+  // distinguir "loja nunca configurou" de "loja configurou de verdade",
+  // mesmo com uma linha já existindo na tabela.
+  isDemoSeed: boolean('is_demo_seed').notNull().default(false),
   updatedBy: uuid('updated_by'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
