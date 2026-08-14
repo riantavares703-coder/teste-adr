@@ -21,7 +21,7 @@
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
-import { mkdir, readFile, writeFile, access, rm, stat } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, access, rm, stat, readdir } from 'node:fs/promises';
 import { constants, existsSync } from 'node:fs';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -98,22 +98,93 @@ function ensureDependencies() {
 }
 
 /**
- * Compila o painel e o cardápio se ainda não estiverem compilados.
+ * Data de modificação mais recente dentro de um arquivo OU pasta (recursivo).
  *
- * Os `dist/` não são versionados, então num clone limpo eles não existem — e
- * sem eles a API sobe normalmente mas /admin devolve nada. Compilar aqui é o
- * que faz o primeiro clique terminar numa tela em vez de numa página em branco.
+ * `node_modules` e `dist` ficam de fora da recursão: o primeiro é enorme e
+ * irrelevante (o build não lê fonte de dentro dele), o segundo é a própria
+ * saída que estamos comparando — entrar nele inflaria a data "mais recente"
+ * com o resultado do build anterior.
  */
-function ensureWebBuilds() {
-  const targets = [
-    { name: '@plataforma/web-customer', dist: join(ROOT, 'apps', 'web-customer', 'dist') },
-    { name: '@plataforma/web-operator', dist: join(ROOT, 'apps', 'web-operator', 'dist') },
-  ].filter((target) => !existsSync(join(target.dist, 'index.html')));
+async function newestMtimeMs(path) {
+  const info = await stat(path).catch(() => null);
+  if (!info) return 0;
+  if (info.isFile()) return info.mtimeMs;
+  if (!info.isDirectory()) return 0;
 
-  if (targets.length === 0) return;
+  let newest = info.mtimeMs;
+  const entries = await readdir(path, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.name === 'node_modules' || entry.name === 'dist') continue;
+    newest = Math.max(newest, await newestMtimeMs(join(path, entry.name)));
+  }
+  return newest;
+}
+
+/**
+ * Um alvo está desatualizado se não existe, ou se algum dos caminhos-fonte
+ * tem arquivo mais recente que ele.
+ *
+ * Por quê isto existe: `dist/` não é versionado, mas quem já rodou o sistema
+ * uma vez e depois atualiza o checkout (git pull, ou extraindo um novo zip por
+ * cima do antigo) pode ficar com um `dist/` antigo convivendo com fonte nova.
+ * Antes, a checagem era só "o arquivo existe?" — e um `dist/` desatualizado
+ * passava como pronto, então correções como esta mesma (o CSP que deixava o
+ * cardápio em branco fora de `localhost`) não chegariam a quem já tinha
+ * rodado o programa antes. Comparar datas é barato (alguns `stat`) e garante
+ * que o binário rodando é sempre um reflexo do código atual.
+ */
+async function isStale(distEntry, sourcePaths) {
+  if (!existsSync(distEntry)) return true;
+  const distMtime = (await stat(distEntry)).mtimeMs;
+  for (const source of sourcePaths) {
+    if ((await newestMtimeMs(source)) > distMtime) return true;
+  }
+  return false;
+}
+
+/**
+ * Compila o painel e o cardápio se ainda não estiverem compilados, ou se a
+ * fonte (própria ou dos pacotes compartilhados que empacotam junto) for mais
+ * nova que o build existente.
+ *
+ * Sem os `dist/` a API sobe normalmente mas /admin e o cardápio devolvem
+ * nada. Compilar aqui é o que faz o primeiro clique terminar numa tela em vez
+ * de numa página em branco — e o que faz uma atualização baixada por cima de
+ * uma instalação antiga também terminar na tela nova, e não na antiga.
+ */
+async function ensureWebBuilds() {
+  const targets = [
+    {
+      name: '@plataforma/web-customer',
+      dir: join(ROOT, 'apps', 'web-customer'),
+    },
+    {
+      name: '@plataforma/web-operator',
+      dir: join(ROOT, 'apps', 'web-operator'),
+    },
+  ].map((target) => ({
+    ...target,
+    distEntry: join(target.dir, 'dist', 'index.html'),
+    // Vite empacota a fonte DESTES pacotes diretamente (sem passar pelo
+    // `dist` deles) — então o que importa aqui é a fonte, não o build.
+    sources: [
+      join(target.dir, 'src'),
+      join(target.dir, 'index.html'),
+      join(target.dir, 'public'),
+      join(ROOT, 'packages', 'client', 'src'),
+      join(ROOT, 'packages', 'domain', 'src'),
+      join(ROOT, 'packages', 'ui-web', 'src'),
+    ],
+  }));
+
+  const stale = [];
+  for (const target of targets) {
+    if (await isStale(target.distEntry, target.sources)) stale.push(target);
+  }
+  if (stale.length === 0) return;
 
   step('Preparando as telas');
-  for (const target of targets) {
+  for (const target of stale) {
     const result = runShell(`pnpm --filter ${target.name} build`);
     if (result.status !== 0) fail(`não foi possível preparar as telas (${target.name}).`);
   }
@@ -136,17 +207,36 @@ function ensureWebBuilds() {
  * que Vite e os testes o consomem, sem exigir rebuild a cada edição); só
  * quando a API roda com `--conditions=node-dist` é que a resolução aponta
  * para `dist/index.js` — ver a condição no `package.json` do pacote.
+ *
+ * Assim como em `ensureWebBuilds`, a checagem é por data, não só existência:
+ * um `dist/` mais velho que a fonte é tratado como ausente. Diferente dos
+ * SPAs, aqui `@plataforma/api` e `@plataforma/domain` são alvos realmente
+ * independentes — o `dist` da API importa o pacote de domínio por caminho
+ * (resolvido em runtime via `node-dist`), nunca empacota a fonte dele —
+ * então cada um só é reconstruído quando a SUA PRÓPRIA fonte muda.
  */
-function ensureApiBuild() {
+async function ensureApiBuild() {
   const targets = [
-    { name: '@plataforma/domain', dist: join(DOMAIN_DIR, 'dist', 'index.js') },
-    { name: '@plataforma/api', dist: join(API_DIR, 'dist', 'main.js') },
-  ].filter((target) => !existsSync(target.dist));
+    {
+      name: '@plataforma/domain',
+      distEntry: join(DOMAIN_DIR, 'dist', 'index.js'),
+      sources: [join(DOMAIN_DIR, 'src')],
+    },
+    {
+      name: '@plataforma/api',
+      distEntry: join(API_DIR, 'dist', 'main.js'),
+      sources: [join(API_DIR, 'src')],
+    },
+  ];
 
-  if (targets.length === 0) return;
+  const stale = [];
+  for (const target of targets) {
+    if (await isStale(target.distEntry, target.sources)) stale.push(target);
+  }
+  if (stale.length === 0) return;
 
   step('Preparando o servidor');
-  for (const target of targets) {
+  for (const target of stale) {
     const result = runShell(`pnpm --filter ${target.name} build`);
     if (result.status !== 0) fail(`não foi possível preparar o servidor (${target.name}).`);
   }
@@ -496,8 +586,8 @@ async function main() {
   console.log('=======================================');
 
   ensureDependencies();
-  ensureWebBuilds();
-  ensureApiBuild();
+  await ensureWebBuilds();
+  await ensureApiBuild();
 
   const binDir = await ensurePostgresBinaries();
   await ensureCluster(binDir);

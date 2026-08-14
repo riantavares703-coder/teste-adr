@@ -40,9 +40,23 @@ export async function createApp(): Promise<INestApplication> {
           connectSrc: ["'self'", 'ws:', 'wss:'],
           objectSrc: ["'none'"],
           frameAncestors: ["'none'"],
+          // Este processo nunca serve HTTPS — é um servidor local/LAN puro.
+          // O default do Helmet inclui upgrade-insecure-requests, que reescreve
+          // TODA requisição http:// (CSS, JS, imagens) para https:// antes de
+          // disparar. Em `localhost` isso passa despercebido (o navegador já
+          // trata `localhost` como origem confiável e não reescreve nada), mas
+          // em qualquer outro host — o IP da rede, o hostname do Wi-Fi — a
+          // reescrita aponta para uma porta sem TLS e cada asset cai com
+          // ERR_CONNECTION_RESET: a tela fica em branco. Precisa ficar `null`
+          // sempre, não só em desenvolvimento.
+          upgradeInsecureRequests: null,
         },
       },
-      hsts: env.NODE_ENV === 'production' ? { maxAge: 63072000, includeSubDomains: true, preload: true } : false,
+      // HSTS também pressupõe HTTPS: ativá-lo aqui não tem efeito (navegadores
+      // ignoram o cabeçalho fora de uma conexão segura), mas deixá-lo desligado
+      // evita qualquer risco caso este processo um dia rode atrás de um proxy
+      // TLS mal configurado.
+      hsts: false,
       referrerPolicy: { policy: 'no-referrer' },
     }),
   );
