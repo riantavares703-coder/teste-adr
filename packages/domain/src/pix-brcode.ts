@@ -33,6 +33,79 @@ export class PixBrCodeError extends Error {
   }
 }
 
+export type PixKeyType = 'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'RANDOM';
+
+function cpfIsValid(d: string): boolean {
+  if (!/^\d{11}$/.test(d) || /^(\d)\1{10}$/.test(d)) return false;
+  for (const len of [9, 10]) {
+    let sum = 0;
+    for (let i = 0; i < len; i++) sum += Number(d[i]) * (len + 1 - i);
+    const dv = ((sum * 10) % 11) % 10;
+    if (dv !== Number(d[len])) return false;
+  }
+  return true;
+}
+
+// CNPJ alfanumérico (vigente desde jul/2026): valor de cada caractere = código ASCII - 48.
+// Para CNPJ só numérico o resultado é idêntico ao algoritmo clássico.
+function cnpjIsValid(c: string): boolean {
+  if (!/^[0-9A-Z]{12}\d{2}$/.test(c) || /^(\d)\1{13}$/.test(c)) return false;
+  const check = (len: number): number => {
+    let sum = 0;
+    let weight = len - 7;
+    for (let i = 0; i < len; i++) {
+      sum += (c.charCodeAt(i) - 48) * weight;
+      weight = weight === 2 ? 9 : weight - 1;
+    }
+    const r = sum % 11;
+    return r < 2 ? 0 : 11 - r;
+  };
+  return check(12) === Number(c[12]) && check(13) === Number(c[13]);
+}
+
+/**
+ * Converte o que o lojista digitou na forma canônica exigida pelo Banco Central
+ * dentro do BR Code. Sem isto, "(11) 99999-1234" ou "123.456.789-09" viram um
+ * código que o app do banco recusa ou que aponta para uma chave inexistente.
+ */
+export function normalizePixKey(type: PixKeyType, raw: string): string {
+  const input = raw.trim();
+  switch (type) {
+    case 'CPF': {
+      const digits = input.replace(/[.\-\s]/g, '');
+      if (!cpfIsValid(digits)) throw new PixBrCodeError('INVALID_KEY', 'CPF inválido');
+      return digits;
+    }
+    case 'CNPJ': {
+      const cnpj = input.replace(/[.\-/\s]/g, '').toUpperCase();
+      if (!cnpjIsValid(cnpj)) throw new PixBrCodeError('INVALID_KEY', 'CNPJ inválido');
+      return cnpj;
+    }
+    case 'PHONE': {
+      let digits = input.replace(/\D/g, '');
+      if (digits.length >= 12 && digits.startsWith('55')) digits = digits.slice(2);
+      if (!/^[1-9]\d\d{8,9}$/.test(digits)) {
+        throw new PixBrCodeError('INVALID_KEY', 'Telefone inválido: informe DDD + número');
+      }
+      return `+55${digits}`;
+    }
+    case 'EMAIL': {
+      const email = input.toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 77) {
+        throw new PixBrCodeError('INVALID_KEY', 'E-mail inválido');
+      }
+      return email;
+    }
+    case 'RANDOM': {
+      const uuid = input.toLowerCase();
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(uuid)) {
+        throw new PixBrCodeError('INVALID_KEY', 'Chave aleatória inválida (esperado um UUID)');
+      }
+      return uuid;
+    }
+  }
+}
+
 /** Monta um campo TLV: ID (2) + tamanho (2, zero-padded) + valor. */
 export function tlv(id: string, value: string): string {
   if (id.length !== 2) {

@@ -932,6 +932,10 @@ export class OrderingService {
          WHERE status = 'PENDING'
            AND reservation_expires_at IS NOT NULL
            AND reservation_expires_at < ${now}
+           AND NOT EXISTS (
+             SELECT 1 FROM payments p
+              WHERE p.order_id = orders.id AND p.status = 'CONFIRMED'
+           )
          ORDER BY reservation_expires_at
          FOR UPDATE SKIP LOCKED
          LIMIT 100

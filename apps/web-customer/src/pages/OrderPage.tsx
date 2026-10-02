@@ -174,8 +174,9 @@ function PaymentCard({ payment, totalCents }: { payment: PaymentView; totalCents
       {payment.pixKeyMasked ? <small>Chave da loja: {payment.pixKeyMasked}</small> : null}
 
       <p className="pay__hint">
-        Pague pelo app do seu banco. A loja confirma o recebimento manualmente — esta tela
-        atualiza sozinha assim que isso acontecer.
+        {payment.automaticConfirmation
+          ? 'Pague pelo app do seu banco. O valor já vem preenchido e o pagamento é confirmado automaticamente — esta tela atualiza sozinha em instantes.'
+          : 'Pague pelo app do seu banco. A loja confirma o recebimento manualmente — esta tela atualiza sozinha assim que isso acontecer.'}
       </p>
     </div>
   );

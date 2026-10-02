@@ -313,6 +313,8 @@ export interface PixSettingsView {
   keyMasked: string | null;
   merchantName: string | null;
   merchantCity: string | null;
+  mercadoPagoConfigured: boolean;
+  mercadoPagoTokenMasked: string | null;
 }
 
 export interface OrderDetail {
@@ -742,7 +744,14 @@ export class ApiClient {
 
   setPixSettings(
     branchId: string,
-    body: { keyType: string; key: string; merchantName: string; merchantCity: string },
+    body: {
+      keyType: string;
+      key: string;
+      merchantName: string;
+      merchantCity: string;
+      /** undefined = mantém; null = remove; string = troca. */
+      mercadoPagoAccessToken?: string | null;
+    },
   ) {
     return this.request<{ keyMasked: string }>('PUT', `/v1/branches/${branchId}/pix-settings`, {
       body,

@@ -231,6 +231,8 @@ export const pixSettings = pgTable('pix_settings', {
   // distinguir "loja nunca configurou" de "loja configurou de verdade",
   // mesmo com uma linha já existindo na tabela.
   isDemoSeed: boolean('is_demo_seed').notNull().default(false),
+  mpAccessTokenEncrypted: bytea('mp_access_token_encrypted'),
+  mpTokenLast4: text('mp_token_last4'),
   updatedBy: uuid('updated_by'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

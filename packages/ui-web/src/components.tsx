@@ -265,6 +265,12 @@ export function friendlyMessage(error: unknown): string {
     CREDENCIAIS_INVALIDAS: 'E-mail ou senha incorretos.',
     LOJA_FECHADA: 'A loja está fechada no momento.',
     PIX_NAO_CONFIGURADO: 'Pix indisponível no momento. Escolha outra forma de pagamento.',
+    CHAVE_PIX_INVALIDA:
+      'A chave Pix não confere com o tipo escolhido. Confira o CPF, CNPJ, telefone (com DDD), e-mail ou chave aleatória.',
+    MERCADO_PAGO_TOKEN_INVALIDO:
+      'O Mercado Pago não aceitou este access token. Copie o Access Token de produção em Credenciais e tente de novo.',
+    MERCADO_PAGO_INDISPONIVEL:
+      'Não foi possível falar com o Mercado Pago agora. Verifique a internet do computador da loja e tente de novo.',
     METODO_INDISPONIVEL: 'Essa forma de pagamento não está disponível nesta loja.',
     CARRINHO_VAZIO: 'Seu carrinho está vazio.',
     CARRINHO_GRANDE: 'Carrinho com itens demais. Remova alguns e tente de novo.',
