@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AddressInput, DeliveryInfo, DeliveryQuote } from '@plataforma/client';
 import {
+  Button,
   Field,
   MapPicker,
   Notice,
@@ -50,6 +51,7 @@ export function DeliveryAddress({ onChange }: { onChange: (choice: DeliveryChoic
   const [geoError, setGeoError] = useState<string | null>(null);
   const [quote, setQuote] = useState<DeliveryQuote | null>(null);
   const [quoting, setQuoting] = useState(false);
+  const [manual, setManual] = useState(false);
   const abort = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -162,25 +164,40 @@ export function DeliveryAddress({ onChange }: { onChange: (choice: DeliveryChoic
   const set = (k: keyof Form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  return (
-    <div className="ui-card">
-      <h3>Endereço de entrega</h3>
+  const showDetails = Boolean(point) || manual;
 
-      <Field
-        label="Buscar endereço"
-        value={query}
-        placeholder="Rua, número e cidade"
-        onChange={(e) => setQuery(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            void runSearch();
-          }
-        }}
-      />
-      <button type="button" className="ui-btn ui-btn--ghost" disabled={searching} onClick={() => void runSearch()}>
-        {searching ? 'Buscando…' : 'Buscar'}
-      </button>
+  function locateMe() {
+    setGeoError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => void onMapPoint({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+      () => setGeoError('Não conseguimos pegar sua localização. Busque o endereço ou toque no mapa.'),
+      { enableHighAccuracy: true, timeout: 10_000 },
+    );
+  }
+
+  return (
+    <div className="ui-card deliv">
+      <h3 className="deliv__title">
+        <span className="deliv__step" aria-hidden="true">1</span> Onde entregar?
+      </h3>
+
+      <div className="deliv__search">
+        <Field
+          label="Buscar endereço"
+          value={query}
+          placeholder="Rua, número e cidade"
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void runSearch();
+            }
+          }}
+        />
+        <Button variant="secondary" loading={searching} onClick={() => void runSearch()}>
+          Buscar
+        </Button>
+      </div>
       {results.length > 0 ? (
         <ul className="addr-results">
           {results.map((r, i) => (
@@ -192,45 +209,69 @@ export function DeliveryAddress({ onChange }: { onChange: (choice: DeliveryChoic
           ))}
         </ul>
       ) : null}
-      {geoError ? <small role="alert">{geoError}</small> : null}
+      {geoError ? (
+        <Notice tone="warning">{geoError}</Notice>
+      ) : null}
 
-      <p className="form__hint">Toque no mapa ou arraste o pino para marcar o local exato.</p>
       <MapPicker
         value={point}
         onChange={(p) => void onMapPoint(p)}
         store={store}
         radiusMeters={info?.active ? info.radiusMeters : null}
+        height={240}
         label="Mapa de entrega. Toque para marcar o local."
       />
-
-      <div className="addr-grid">
-        <Field label="CEP" inputMode="numeric" value={form.postalCode} placeholder="00000-000"
-          onChange={(e) => setForm((f) => ({ ...f, postalCode: maskCep(e.target.value) }))} />
-        <Field label="Número" value={form.streetNumber} onChange={set('streetNumber')} />
-        <div className="addr-wide">
-          <Field label="Rua" value={form.street} onChange={set('street')} />
-        </div>
-        <Field label="Complemento" value={form.complement} placeholder="Apto, bloco…" onChange={set('complement')} />
-        <Field label="Bairro" value={form.district} onChange={set('district')} />
-        <Field label="Cidade" value={form.city} onChange={set('city')} />
-        <Field label="UF" value={form.stateCode} maxLength={2} onChange={set('stateCode')} />
+      <div className="deliv__mapfoot">
+        <small>Toque no mapa ou arraste o pino para o local exato.</small>
+        {typeof navigator !== 'undefined' && navigator.geolocation && window.isSecureContext ? (
+          <button type="button" className="deliv__link" onClick={locateMe}>
+            📍 Usar minha localização
+          </button>
+        ) : null}
       </div>
 
-      {quoting ? <small>Calculando entrega…</small> : null}
-      {!quoting && quote?.deliverable ? (
-        <Notice tone="success" title="Entregamos nesse endereço">
-          Taxa de entrega <Price cents={quote.feeCents ?? 0} />
-          {quote.etaMinutes ? ` · cerca de ${quote.etaMinutes} min` : ''}
-        </Notice>
-      ) : null}
-      {!quoting && quote && !quote.deliverable ? (
-        <Notice tone="danger" title="Fora da área de entrega">
-          Esse endereço está fora da área atendida pela loja. Escolha “Retirar” ou marque outro local.
-        </Notice>
-      ) : null}
-      {!quoting && !quote && cepDigits.length === 8 ? (
-        <small>Não foi possível calcular a entrega agora. Tente de novo.</small>
-      ) : null}
+      {!showDetails ? (
+        <button type="button" className="deliv__link" onClick={() => setManual(true)}>
+          Prefiro digitar o endereço
+        </button>
+      ) : (
+        <>
+          <h3 className="deliv__title">
+            <span className="deliv__step" aria-hidden="true">2</span> Confirme o endereço
+          </h3>
+          <div className="addr-grid">
+            <Field label="CEP" inputMode="numeric" value={form.postalCode} placeholder="00000-000"
+              onChange={(e) => setForm((f) => ({ ...f, postalCode: maskCep(e.target.value) }))} />
+            <Field label="Número" value={form.streetNumber} onChange={set('streetNumber')} />
+            <div className="addr-wide">
+              <Field label="Rua" value={form.street} onChange={set('street')} />
+            </div>
+            <Field label="Complemento" value={form.complement} placeholder="Apto, bloco…" onChange={set('complement')} />
+            <Field label="Bairro" value={form.district} onChange={set('district')} />
+            <Field label="Cidade" value={form.city} onChange={set('city')} />
+            <Field label="UF" value={form.stateCode} maxLength={2} onChange={set('stateCode')} />
+          </div>
+
+          {quoting ? <small>Calculando entrega…</small> : null}
+          {!quoting && quote?.deliverable ? (
+            <Notice tone="success" title="Entregamos nesse endereço">
+              Taxa de entrega <Price cents={quote.feeCents ?? 0} />
+              {quote.etaMinutes ? ` · cerca de ${quote.etaMinutes} min` : ''}
+            </Notice>
+          ) : null}
+          {!quoting && quote && !quote.deliverable ? (
+            <Notice tone="danger" title="Fora da área de entrega">
+              Esse endereço está fora da área atendida pela loja. Escolha “Retirar” ou marque outro local.
+            </Notice>
+          ) : null}
+          {!quoting && !quote && cepDigits.length === 8 ? (
+            <small>Não foi possível calcular a entrega agora. Tente de novo.</small>
+          ) : null}
+          {!quoting && cepDigits.length !== 8 ? (
+            <small>Informe o CEP para calcular a taxa de entrega.</small>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }

@@ -12,6 +12,7 @@ import {
   normalizeHex,
   relativeLuminance,
   resolveTheme,
+  toDarkTheme,
   validateBranding,
   withAlpha,
 } from '../src/branding.js';
@@ -258,5 +259,43 @@ describe('utilitários de cor', () => {
     expect(withAlpha('#ff5a00', 1)).toBe('#ff5a00ff');
     expect(withAlpha('#ff5a00', 0)).toBe('#ff5a0000');
     expect(withAlpha('#ff5a00', 0.55)).toMatch(/^#ff5a00[0-9a-f]{2}$/);
+  });
+});
+
+describe('toDarkTheme', () => {
+  const brands = [
+    undefined,
+    { primaryColor: '#111111' },
+    { primaryColor: '#000000', accentColor: '#050505' },
+    { primaryColor: '#ffffff', accentColor: '#ffffcc' },
+    { primaryColor: '#e11d48', secondaryColor: '#0f172a' },
+    { primaryColor: '#1d4ed8', secondaryColor: '#000000' },
+    { primaryColor: '#16a34a', gradientStyle: 'DIAGONAL' as const, gradientFrom: '#020617', gradientTo: '#15803d' },
+  ];
+
+  it.each(brands.map((b, i) => [i, b] as const))('marca %i: texto, apoio e cores da marca ficam legíveis', (_i, brand) => {
+    const dark = toDarkTheme(resolveTheme(brand as never));
+    expect(contrastRatio(dark.text, dark.background)).toBeGreaterThanOrEqual(7);
+    expect(contrastRatio(dark.text, dark.card)).toBeGreaterThanOrEqual(7);
+    expect(contrastRatio(dark.mutedText, dark.card)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(dark.primary, dark.card)).toBeGreaterThanOrEqual(3);
+    expect(contrastRatio(dark.accent, dark.card)).toBeGreaterThanOrEqual(3);
+    expect(contrastRatio(dark.onPrimary, dark.primary)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(dark.onSecondary, dark.secondary)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(dark.onAccent, dark.accent)).toBeGreaterThanOrEqual(4.5);
+    for (const c of dark.gradient.colors) expect(contrastRatio(c, dark.card)).toBeGreaterThanOrEqual(3);
+  });
+
+  it('preserva a cor da marca quando ela já tem contraste suficiente', () => {
+    const light = resolveTheme({ primaryColor: '#e11d48' });
+    expect(toDarkTheme(light).primary).toBe(light.primary);
+  });
+
+  it('não altera tipografia nem a forma do gradiente', () => {
+    const light = resolveTheme({ gradientStyle: 'DIAGONAL' as const });
+    const dark = toDarkTheme(light);
+    expect(dark.fontToken).toBe(light.fontToken);
+    expect(dark.gradient.start).toEqual(light.gradient.start);
+    expect(dark.gradient.enabled).toBe(light.gradient.enabled);
   });
 });

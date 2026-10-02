@@ -31,6 +31,20 @@ const COLUMNS: Array<{ title: string; statuses: OrderStatus[] }> = [
 ];
 
 /** A partir daqui o pedido está demorando e precisa saltar aos olhos. */
+/** O botão diz o que o operador FAZ, não o estado de destino. */
+const ACTION_LABEL: Partial<Record<OrderStatus, string>> = {
+  CONFIRMED: 'Aceitar pedido',
+  PREPARING: 'Iniciar preparo',
+  READY: 'Marcar como pronto',
+  AWAITING_PICKUP: 'Avisar cliente',
+  OUT_FOR_DELIVERY: 'Saiu para entrega',
+  PICKED_UP: 'Cliente retirou',
+  DELIVERED: 'Marcar entregue',
+  CANCELLED: 'Cancelar',
+  REJECTED: 'Recusar',
+};
+const actionLabel = (to: OrderStatus) => ACTION_LABEL[to] ?? ORDER_STATUS_LABEL[to];
+
 const LATE_MINUTES = 20;
 const WARN_MINUTES = 12;
 
@@ -257,33 +271,52 @@ function OrderCard({
     <article className={`ticket ticket--${urgency} ${isNew ? 'ticket--new' : ''}`}>
       <header className="ticket__head">
         <span className="ticket__number tnum">#{order.orderNumber}</span>
-        <span className={`ticket__age ticket__age--${urgency} tnum`}>{minutes} min</span>
+        <span
+          className={`ticket__age ticket__age--${urgency} tnum`}
+          title="Tempo desde que o pedido chegou"
+        >
+          há {minutes} min
+        </span>
       </header>
 
       <div className="ticket__tags">
         <span className="ui-badge">{order.fulfillment === 'DELIVERY' ? 'Entrega' : 'Retirada'}</span>
         {/* Pagamento é máquina de estado SEPARADA do pedido: pode estar em
             preparo com pagamento pendente. */}
-        {payment && payment.status !== 'CONFIRMED' ? (
-          <>
-            <span className="ui-badge ui-badge--warning">
-              {payment.method === 'PIX' ? 'Pix não confirmado' : 'Paga na entrega'}
-            </span>
-            {canConfirmPayment ? (
-              <button
-                type="button"
-                className="ticket__payconfirm"
-                disabled={busy}
-                onClick={onConfirmPayment}
-              >
-                Confirmar pagamento
-              </button>
-            ) : null}
-          </>
-        ) : (
-          <span className="ui-badge ui-badge--success">Pago</span>
-        )}
+        {payment && payment.status === 'CONFIRMED' ? (
+          <span className="ui-badge ui-badge--success">✓ Pago</span>
+        ) : payment && payment.method === 'PIX' ? (
+          <span className="ui-badge ui-badge--warning">
+            {payment.provider === 'MERCADO_PAGO' ? 'Aguardando Pix (automático)' : 'Aguardando Pix'}
+          </span>
+        ) : payment ? (
+          <span className="ui-badge ui-badge--warning">Pagar na entrega</span>
+        ) : null}
       </div>
+
+      {payment && payment.status !== 'CONFIRMED' && canConfirmPayment ? (
+        <button
+          type="button"
+          className={payment.provider === 'MERCADO_PAGO' ? 'ticket__payconfirm ticket__payconfirm--quiet' : 'ticket__payconfirm'}
+          disabled={busy}
+          onClick={() => {
+            // Pix automático: confirmar na mão só como contingência, e com confirmação.
+            if (
+              payment.provider === 'MERCADO_PAGO' &&
+              !window.confirm('Este Pix confirma sozinho. Só confirme à mão se já viu o valor na sua conta. Continuar?')
+            ) {
+              return;
+            }
+            onConfirmPayment();
+          }}
+        >
+          {payment.method === 'PIX'
+            ? payment.provider === 'MERCADO_PAGO'
+              ? 'Confirmar manualmente'
+              : 'Já recebi o Pix'
+            : 'Marcar como pago'}
+        </button>
+      ) : null}
 
       <ul className="ticket__items">
         {items.map((item) => (
@@ -308,12 +341,12 @@ function OrderCard({
               disabled={busy}
               onClick={() => onMove(to)}
             >
-              {ORDER_STATUS_LABEL[to]}
+              {actionLabel(to)}
             </button>
           ))}
           {advance.map((to) => (
             <Button key={to} loading={busy} onClick={() => onMove(to)}>
-              {ORDER_STATUS_LABEL[to]}
+              {actionLabel(to)}
             </Button>
           ))}
         </div>

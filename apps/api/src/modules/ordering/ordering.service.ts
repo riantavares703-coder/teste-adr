@@ -969,6 +969,17 @@ export class OrderingService {
       }
       if (to === 'CANCELLED' || to === 'REJECTED' || to === 'EXPIRED') {
         await this.inventory.releaseReservations(tx, orderId, 'RELEASE', principal.userId);
+        // Pedido encerrado não pode ter cobrança aberta: sem isto, a loja (ou a
+        // conciliação automática) ainda "confirmaria" o pagamento de um pedido cancelado.
+        await tx
+          .update(s.payments)
+          .set({ status: 'CANCELLED' })
+          .where(
+            and(
+              eq(s.payments.orderId, orderId),
+              inArray(s.payments.status, ['PENDING', 'AWAITING_CONFIRMATION']),
+            ),
+          );
       }
 
       await this.audit.record(tx, {

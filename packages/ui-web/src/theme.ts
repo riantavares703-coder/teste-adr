@@ -1,4 +1,5 @@
-import { resolveTheme, type BrandingInput, type ResolvedTheme } from '@plataforma/domain';
+import { useSyncExternalStore } from 'react';
+import { resolveTheme, toDarkTheme, type BrandingInput, type ResolvedTheme } from '@plataforma/domain';
 
 /**
  * TEMA NA WEB.
@@ -22,7 +23,11 @@ export const SEMANTIC = {
   onSemantic: '#ffffff',
 } as const;
 
-export function themeToCssVars(theme: Theme): Record<string, string> {
+/** No escuro, os tons semânticos clareiam para manter contraste sobre superfícies escuras. */
+const SEMANTIC_DARK = { success: '#34d399', warning: '#fbbf24', danger: '#f87171' } as const;
+
+export function themeToCssVars(theme: Theme, scheme: 'light' | 'dark' = 'light'): Record<string, string> {
+  const semantic = scheme === 'dark' ? SEMANTIC_DARK : SEMANTIC;
   const vars: Record<string, string> = {
     '--c-primary': theme.primary,
     '--c-on-primary': theme.onPrimary,
@@ -36,9 +41,10 @@ export function themeToCssVars(theme: Theme): Record<string, string> {
     '--c-card': theme.card,
     '--c-border': theme.border,
     '--c-overlay': theme.overlay,
-    '--c-success': SEMANTIC.success,
-    '--c-warning': SEMANTIC.warning,
-    '--c-danger': SEMANTIC.danger,
+    '--c-success': semantic.success,
+    '--c-warning': semantic.warning,
+    '--c-danger': semantic.danger,
+    '--c-on-danger': scheme === 'dark' ? '#1a0505' : SEMANTIC.onSemantic,
     // A fonte é um token fechado do domínio; se não houver família mapeada,
     // cai na pilha do sistema em vez de aceitar um nome livre.
     '--font-brand': theme.fontFamily
@@ -67,10 +73,99 @@ function gradientAngle(gradient: Theme['gradient']): string {
   return `${Math.round(((degrees % 360) + 360) % 360)}deg`;
 }
 
-/** Aplica o tema a um elemento (normalmente `document.documentElement`). */
+/**
+ * MODO CLARO / ESCURO / AUTOMÁTICO.
+ *
+ * O tema que o servidor resolve (cores da marca da loja) é sempre o CLARO; o
+ * escuro é derivado dele no navegador por `toDarkTheme`, que preserva a marca e
+ * garante contraste. A escolha do usuário fica no aparelho (localStorage) e
+ * "automático" segue o sistema operacional.
+ */
+export type ColorScheme = 'system' | 'light' | 'dark';
+
+const STORAGE_KEY = 'ui-color-scheme';
+const isBrowser = typeof document !== 'undefined';
+
+function readPreference(): ColorScheme {
+  try {
+    const value = localStorage.getItem(STORAGE_KEY);
+    return value === 'light' || value === 'dark' ? value : 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+let preference: ColorScheme = isBrowser ? readPreference() : 'system';
+let lightTheme: Theme = resolveTheme();
+const listeners = new Set<() => void>();
+
+function systemPrefersDark(): boolean {
+  return typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
+export function effectiveScheme(): 'light' | 'dark' {
+  return preference === 'system' ? (systemPrefersDark() ? 'dark' : 'light') : preference;
+}
+
+function render(): void {
+  if (!isBrowser) return;
+  const root = document.documentElement;
+  const scheme = effectiveScheme();
+  const theme = scheme === 'dark' ? toDarkTheme(lightTheme) : lightTheme;
+  for (const [name, value] of Object.entries(themeToCssVars(theme, scheme))) {
+    root.style.setProperty(name, value);
+  }
+  root.dataset.scheme = scheme;
+  root.style.colorScheme = scheme;
+  listeners.forEach((l) => l());
+}
+
+export function getColorScheme(): ColorScheme {
+  return preference;
+}
+
+export function setColorScheme(next: ColorScheme): void {
+  preference = next;
+  try {
+    if (next === 'system') localStorage.removeItem(STORAGE_KEY);
+    else localStorage.setItem(STORAGE_KEY, next);
+  } catch {
+    // sem armazenamento (modo privado): vale só nesta sessão
+  }
+  render();
+}
+
+export function useColorScheme(): { preference: ColorScheme; scheme: 'light' | 'dark' } {
+  const pref = useSyncExternalStore(
+    (cb) => {
+      listeners.add(cb);
+      return () => listeners.delete(cb);
+    },
+    () => preference,
+    () => 'system' as ColorScheme,
+  );
+  return { preference: pref, scheme: effectiveScheme() };
+}
+
+/** Aplica o tema (claro) da loja ao documento; o escuro é derivado dele. */
 export function applyTheme(element: HTMLElement, theme: Theme): void {
+  if (element === document.documentElement) {
+    lightTheme = theme;
+    render();
+    return;
+  }
   for (const [name, value] of Object.entries(themeToCssVars(theme))) {
     element.style.setProperty(name, value);
+  }
+}
+
+if (isBrowser) {
+  // Aplica na carga do módulo: evita o clarão branco antes do React montar.
+  render();
+  if (typeof matchMedia === 'function') {
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (preference === 'system') render();
+    });
   }
 }
 

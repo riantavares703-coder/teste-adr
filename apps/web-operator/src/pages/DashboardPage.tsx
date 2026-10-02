@@ -92,22 +92,23 @@ export function DashboardPage() {
               label="Recebido no período"
               value={formatBRL(revenue.current.revenueCents)}
               percent={revenue.change.revenuePercent}
-              previous={`antes: ${formatBRL(revenue.previous.revenueCents)}`}
+              previous={revenue.previous.revenueCents > 0 ? `antes: ${formatBRL(revenue.previous.revenueCents)}` : undefined}
             />
             <BigStat
               label="Pedidos"
               value={String(revenue.current.orderCount)}
               percent={revenue.change.orderPercent}
-              previous={`antes: ${revenue.previous.orderCount}`}
+              previous={revenue.previous.orderCount > 0 ? `antes: ${revenue.previous.orderCount}` : undefined}
             />
             <BigStat
               label="Ticket médio"
               value={formatBRL(revenue.current.averageTicketCents)}
-              previous={`antes: ${formatBRL(revenue.previous.averageTicketCents)}`}
+              previous={revenue.previous.averageTicketCents > 0 ? `antes: ${formatBRL(revenue.previous.averageTicketCents)}` : undefined}
             />
             <BigStat
               label="Cancelados"
               value={String(summary?.totals.cancelledCount ?? 0)}
+              note="recusados, cancelados ou expirados"
               tone={summary && summary.totals.cancelledCount > 0 ? 'warn' : undefined}
             />
           </div>
@@ -160,12 +161,14 @@ function BigStat({
   value,
   percent,
   previous,
+  note,
   tone,
 }: {
   label: string;
   value: string;
   percent?: number | null;
   previous?: string;
+  note?: string;
   tone?: 'warn';
 }) {
   return (
@@ -176,9 +179,9 @@ function BigStat({
       <div className="bigstat__foot">
         {percent !== undefined ? (
           percent === null ? (
-            // Crescer "100%" a partir de zero não informa nada; dizer isso é
-            // mais honesto que exibir um número inventado.
-            <span className="delta delta--none">sem base de comparação</span>
+            // Crescer "100%" a partir de zero não informa nada. Sem período
+            // anterior, não há o que comparar — então não mostramos nada.
+            null
           ) : (
             <span className={`delta ${percent >= 0 ? 'delta--up' : 'delta--down'}`}>
               {percent >= 0 ? '▲' : '▼'} {Math.abs(percent).toLocaleString('pt-BR')}%
@@ -186,6 +189,7 @@ function BigStat({
           )
         ) : null}
         {previous ? <span className="bigstat__prev">{previous}</span> : null}
+        {note ? <span className="bigstat__prev">{note}</span> : null}
       </div>
     </div>
   );
@@ -211,8 +215,12 @@ const BUCKET_LABEL: Record<RevenueReport['bucket'], string> = {
 function RevenueChart({ report }: { report: RevenueReport }) {
   if (report.series.length === 0) {
     return (
-      <div className="ui-card">
-        <p className="dash__empty">Nenhuma venda concluída no período.</p>
+      <div className="ui-card chart chart--empty">
+        <span className="chart__emptyicon" aria-hidden="true">📈</span>
+        <strong>Ainda sem vendas neste período</strong>
+        <p className="dash__empty">
+          Quando pedidos forem concluídos, a evolução do faturamento aparece aqui.
+        </p>
       </div>
     );
   }

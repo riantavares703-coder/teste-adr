@@ -1,4 +1,5 @@
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
+import { ThemeToggle } from '@plataforma/ui-web';
 import { SessionProvider, useSession } from './session';
 import { LoginPage } from './pages/LoginPage';
 import { OrdersPage } from './pages/OrdersPage';
@@ -50,6 +51,7 @@ function Shell() {
 
         <div className="admin__user">
           <span>{profile.fullName}</span>
+          <ThemeToggle />
           <button type="button" className="ui-btn ui-btn--ghost" onClick={signOut}>
             Sair
           </button>

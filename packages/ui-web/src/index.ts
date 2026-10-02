@@ -6,4 +6,5 @@ export * from './components.js';
 export * from './sheet.js';
 export * from './realtime.js';
 export * from './geo.js';
+export * from './food.js';
 export * from './map-picker.js';

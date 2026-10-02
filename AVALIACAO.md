@@ -56,3 +56,28 @@ O token é validado no MP ao salvar, guardado cifrado e nunca devolvido pela API
   testadas interceptando as requisições com respostas no formato real do Nominatim. Falta
   um teste num celular com internet de verdade (ex.: limites de uso do Nominatim).
 - Pedido mínimo da zona é aplicado no servidor (e avisado no checkout) só para entrega.
+
+## Interface e modo escuro
+
+- Modo claro / escuro / automático (botão no cabeçalho; preferência salva no aparelho). O
+  tema escuro é derivado da cor da marca da loja com contraste garantido por testes.
+- Cardápio com espaço para foto (e miniatura + aviso de "produtos sem foto" no painel),
+  cartão de pedido com ações em verbo, faturamento mais limpo, checkout de entrega em dois
+  passos, "Disponível/Esgotado" e "Excluir" discreto.
+
+## Testes de dinheiro e bugs encontrados por eles
+
+- Propriedades aleatórias (semente fixa): total do pedido contra conta independente em
+  BigInt (3000 carrinhos), valor do BR Code reconstruindo os centavos (20 mil valores), CRC
+  detectando alteração do valor, exibição `formatBRL`.
+- API: pagamento = total do pedido; preço imposto pelo cliente recusado; preço alterado
+  depois não muda a cobrança; total desatualizado não cria nada; idempotência (inclusive 6
+  envios simultâneos); confirmação simultânea; arredondamento do Mercado Pago (11 preços).
+- **Bug corrigido:** confirmações manuais simultâneas passavam todas (5 de 5), gerando
+  eventos e auditorias duplicados. A linha agora é travada.
+- **Bug corrigido:** cancelar, recusar ou expirar um pedido não encerrava a cobrança aberta,
+  então ainda dava para "confirmar" o pagamento de um pedido cancelado (e a conciliação
+  automática faria isso sozinha). Agora a cobrança é cancelada junto.
+- Pix pago depois do cancelamento não confirma nada: fica registrado (`payment.received_after_cancel`)
+  e a cobrança ganha o aviso "estornar no Mercado Pago". Hoje o aviso aparece só no
+  registro/log; não há tela para isso.

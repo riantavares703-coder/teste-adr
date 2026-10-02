@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from '../../common/uuid.js';
 
-import { and, desc, eq, gt } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, or } from 'drizzle-orm';
 import {
   canTransitionPayment,
   maskPixKey,
@@ -163,6 +163,9 @@ export class PaymentsService {
         .select()
         .from(s.payments)
         .where(and(eq(s.payments.id, paymentId), eq(s.payments.branchId, branchId)))
+        // Trava a linha: duas confirmações simultâneas viram uma só (a outra
+        // espera, relê o status já CONFIRMED e recebe 409).
+        .for('update')
         .limit(1);
 
       const payment = rows[0];
@@ -274,8 +277,15 @@ export class PaymentsService {
         .where(
           and(
             eq(s.payments.provider, 'MERCADO_PAGO'),
-            eq(s.payments.status, 'AWAITING_CONFIRMATION'),
-            gt(s.payments.createdAt, since),
+            or(
+              and(eq(s.payments.status, 'AWAITING_CONFIRMATION'), gt(s.payments.createdAt, since)),
+              // Cobrança cancelada que ainda pode receber um Pix tardio (QR continua válido no banco).
+              and(
+                eq(s.payments.status, 'CANCELLED'),
+                isNull(s.payments.failureReason),
+                gt(s.payments.createdAt, new Date(Date.now() - 2 * 60 * 60_000)),
+              ),
+            ),
           ),
         )
         .orderBy(s.payments.createdAt)
@@ -289,7 +299,9 @@ export class PaymentsService {
       try {
         const token = this.crypto.decrypt(Buffer.from(tokenEncrypted));
         const remote = await fetchMercadoPagoPayment(token, payment.providerPaymentId);
-        if (remote.status === 'approved') {
+        if (remote.status === 'approved' && payment.status === 'CANCELLED') {
+          await this.flagLatePayment(payment.id, remote.amountCents);
+        } else if (remote.status === 'approved') {
           if (await this.confirmFromProvider(payment.id, remote)) confirmed += 1;
         } else if (remote.status === 'rejected' || remote.status === 'cancelled') {
           await this.failFromProvider(payment.id, `Mercado Pago: ${remote.status}`);
@@ -344,6 +356,33 @@ export class PaymentsService {
         action: 'payment.confirmed_by_provider',
       });
       return true;
+    });
+  }
+
+  /** Pix pago DEPOIS do cancelamento: não confirma nada, mas a loja precisa saber que há dinheiro a estornar. */
+  private async flagLatePayment(paymentId: string, receivedCents: number): Promise<void> {
+    await this.db.withPlatform(async (tx) => {
+      const [payment] = await tx
+        .select()
+        .from(s.payments)
+        .where(and(eq(s.payments.id, paymentId), eq(s.payments.status, 'CANCELLED'), isNull(s.payments.failureReason)))
+        .for('update')
+        .limit(1);
+      if (!payment) return;
+      await tx
+        .update(s.payments)
+        .set({ failureReason: 'Pago após o cancelamento do pedido: estornar no Mercado Pago' })
+        .where(eq(s.payments.id, paymentId));
+      await this.audit.record(tx, {
+        organizationId: payment.organizationId,
+        branchId: payment.branchId,
+        action: 'payment.received_after_cancel',
+        resourceType: 'payment',
+        resourceId: payment.id,
+        result: 'FAILURE',
+        metadata: { orderId: payment.orderId, amountCents: receivedCents },
+      });
+      this.logger.error(`Pagamento ${payment.id} recebido após o cancelamento do pedido: estornar ${receivedCents} centavos`);
     });
   }
 

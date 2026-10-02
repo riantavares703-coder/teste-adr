@@ -1,5 +1,6 @@
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
 import { formatBRL } from '@plataforma/domain';
+import { setColorScheme, useColorScheme, type ColorScheme } from './theme.js';
 
 /**
  * Componentes compartilhados pelo painel e pelo cardápio.
@@ -326,3 +327,27 @@ export function AsyncBoundary({
 }
 
 export { formatBRL };
+
+const SCHEME_NEXT: Record<ColorScheme, ColorScheme> = { system: 'light', light: 'dark', dark: 'system' };
+const SCHEME_LABEL: Record<ColorScheme, string> = {
+  system: 'Tema automático (segue o aparelho)',
+  light: 'Tema claro',
+  dark: 'Tema escuro',
+};
+const SCHEME_ICON: Record<ColorScheme, string> = { system: '🖥️', light: '☀️', dark: '🌙' };
+
+/** Alterna automático → claro → escuro. Mostra o estado atual; o toque avança. */
+export function ThemeToggle({ className }: { className?: string }) {
+  const { preference } = useColorScheme();
+  return (
+    <button
+      type="button"
+      className={`ui-themetoggle ${className ?? ''}`}
+      aria-label={`${SCHEME_LABEL[preference]}. Toque para trocar.`}
+      title={SCHEME_LABEL[preference]}
+      onClick={() => setColorScheme(SCHEME_NEXT[preference])}
+    >
+      <span aria-hidden="true">{SCHEME_ICON[preference]}</span>
+    </button>
+  );
+}
