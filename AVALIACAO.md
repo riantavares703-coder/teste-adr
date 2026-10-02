@@ -43,4 +43,16 @@ O token é validado no MP ao salvar, guardado cifrado e nunca devolvido pela API
   exige estorno manual.
 - A confirmação é por consulta, não por webhook, porque o sistema roda na rede local da
   loja. Exige internet de saída no computador da loja.
-- Não foram testados: app Android, entrega, WhatsApp, upload de imagens, relatórios.
+- Não foram testados: app Android, WhatsApp, upload de imagens, relatórios.
+
+## Entrega com mapa
+
+- Cliente: busca de endereço, mapa com pino da loja e do cliente, campos editáveis, taxa/prazo
+  e pedido mínimo calculados no servidor. Loja: marca posição, raio, taxa, mínimo e prazo.
+- Bug encontrado e corrigido: a CSP do servidor bloqueava a busca (Nominatim) e os blocos do
+  mapa (OpenStreetMap) mesmo com internet. Agora libera só esses dois hosts.
+- **Verificado com rede simulada:** o ambiente de desenvolvimento bloqueia OpenStreetMap,
+  Nominatim e ViaCEP. Busca, leitura de endereço ao tocar no mapa e carga dos blocos foram
+  testadas interceptando as requisições com respostas no formato real do Nominatim. Falta
+  um teste num celular com internet de verdade (ex.: limites de uso do Nominatim).
+- Pedido mínimo da zona é aplicado no servidor (e avisado no checkout) só para entrega.

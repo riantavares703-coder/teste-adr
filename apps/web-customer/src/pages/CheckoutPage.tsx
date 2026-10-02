@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toOrderItems } from '@plataforma/client';
 import type { PaymentMethod } from '@plataforma/domain';
-import { Button, Field, Notice, Price, Row, friendlyMessage } from '@plataforma/ui-web';
+import { Button, Field, Notice, Price, Row, formatBRL, friendlyMessage } from '@plataforma/ui-web';
 import { useStore } from '../store-context';
 import { useCart } from '../cart-context';
 import { maskPhone, toE164 } from '../phone';
@@ -41,6 +41,8 @@ export function CheckoutPage() {
   );
   const [notes, setNotes] = useState('');
   const [delivery, setDelivery] = useState<DeliveryChoice | null>(null);
+  const deliveryMin = fulfillment === 'DELIVERY' ? (delivery?.quote.minOrderCents ?? 0) : 0;
+  const belowMin = deliveryMin > subtotalCents;
   const feeCents = fulfillment === 'DELIVERY' ? (delivery?.quote.feeCents ?? 0) : 0;
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +57,10 @@ export function CheckoutPage() {
     if (!e164) problems.phone = 'Informe um telefone com DDD';
     setFieldErrors(problems);
     if (Object.keys(problems).length > 0) return;
+    if (belowMin) {
+      setError(`O pedido mínimo para entrega é ${formatBRL(deliveryMin)}. Adicione mais itens ou escolha retirar.`);
+      return;
+    }
     if (fulfillment === 'DELIVERY' && !delivery) {
       setError('Informe um endereço completo, dentro da área de entrega.');
       return;
@@ -205,6 +211,12 @@ export function CheckoutPage() {
         ) : null}
         <Row label="Total" value={<Price cents={subtotalCents + feeCents} />} />
       </div>
+
+      {belowMin ? (
+        <Notice tone="warning" title="Pedido abaixo do mínimo para entrega">
+          O mínimo é <Price cents={deliveryMin} />. Adicione mais itens ou escolha retirar.
+        </Notice>
+      ) : null}
 
       {error ? <Notice tone="danger">{error}</Notice> : null}
 

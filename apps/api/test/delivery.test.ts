@@ -152,6 +152,27 @@ describe('Entrega: endereço, zona e taxa', () => {
     expect(order.body.code).toBe('ENDERECO_OBRIGATORIO');
   });
 
+  it('pedido mínimo da zona vale para entrega, mas não para retirada', async () => {
+    await configureZone({ minOrderCents: 10_000 });
+    const address = await addAddress(INSIDE);
+    const delivery = await deliveryOrder(address.body.id);
+    expect(delivery.status).toBe(422);
+    expect(delivery.body.code).toBe('PEDIDO_MINIMO');
+    expect(delivery.body.details?.minOrderCents ?? delivery.body.minOrderCents).toBe(10_000);
+
+    const pickup = await request(baseUrl)
+      .post('/v1/orders')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .set('Idempotency-Key', randomUUID())
+      .send({
+        branchId: f.branchId,
+        fulfillment: 'PICKUP',
+        paymentMethod: 'CASH_ON_SITE',
+        items: [{ productId: f.productId, quantity: 1 }],
+      });
+    expect(pickup.status).toBe(201);
+  });
+
   it('cliente não consegue configurar a zona da loja', async () => {
     const res = await request(baseUrl)
       .put(`/v1/branches/${f.branchId}/delivery-zone`)

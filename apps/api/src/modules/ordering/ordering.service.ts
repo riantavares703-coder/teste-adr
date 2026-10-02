@@ -380,6 +380,7 @@ export class OrderingService {
     // --- taxa de entrega: resolvida no servidor -----------------------------
     let deliveryFeeCents = 0;
     let deliveryZoneId: string | null = null;
+    let zoneMinOrderCents = 0;
     let addressSnapshot: Record<string, unknown> | null = null;
 
     if (input.fulfillment === 'DELIVERY') {
@@ -407,6 +408,7 @@ export class OrderingService {
 
       deliveryFeeCents = zone.feeCents;
       deliveryZoneId = zone.id;
+      zoneMinOrderCents = zone.minOrderCents;
       addressSnapshot = {
         postalCode: address.postalCode,
         street: address.street,
@@ -433,9 +435,11 @@ export class OrderingService {
       discountCents: 0,
     });
 
-    if (priced.subtotalCents < settings.minOrderCents) {
+    // Vale o maior entre o mínimo da unidade e o mínimo da zona de entrega.
+    const minOrderCents = Math.max(settings.minOrderCents, zoneMinOrderCents);
+    if (priced.subtotalCents < minOrderCents) {
       throw unprocessable('PEDIDO_MINIMO', 'Pedido abaixo do valor mínimo da unidade', {
-        minOrderCents: settings.minOrderCents,
+        minOrderCents,
         subtotalCents: priced.subtotalCents,
       });
     }
