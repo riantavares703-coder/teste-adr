@@ -217,12 +217,115 @@
   margin: var(--sp-3) 0;
 }
 
-/* Na impressão, sobra o QR code e o endereço — nada de menu ou botões. */
+/* QR com selo de alcance: quem imprime precisa ver que o link só vale no Wi-Fi. */
+.share__qrbox {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+.share__badge {
+  position: absolute;
+  left: 50%;
+  bottom: -10px;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--c-warning);
+  color: #1a1203;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  line-height: 1.4;
+  white-space: nowrap;
+  box-shadow: var(--shadow-md);
+}
+.share__actions--center {
+  justify-content: center;
+}
+.share__verdict {
+  display: block;
+  margin-top: var(--sp-2);
+  color: var(--c-muted);
+  line-height: 1.45;
+}
+.share__verdict--ok {
+  color: var(--c-success);
+  font-weight: var(--weight-semibold);
+}
+.share__verdict--fail {
+  color: var(--c-text);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-sm);
+  background: var(--tint-warning);
+}
+.share__public {
+  margin-top: var(--sp-4);
+}
+.share__public h3 {
+  margin: 0 0 var(--sp-2);
+}
+.share__howto {
+  margin-top: var(--sp-3);
+}
+.share__howto summary {
+  cursor: pointer;
+  font-weight: var(--weight-semibold);
+  min-height: var(--touch-min);
+  display: flex;
+  align-items: center;
+}
+.share__howto ol {
+  margin: var(--sp-2) 0;
+  padding-left: var(--sp-5);
+  display: grid;
+  gap: var(--sp-2);
+}
+
+/* Cartaz: invisível na tela, é a única coisa que sai na impressão. */
+.share__poster {
+  display: none;
+}
 @media print {
-  .admin__top,
-  .share__actions,
-  .ui-notice {
-    display: none !important;
+  body * {
+    visibility: hidden !important;
+  }
+  .share__poster,
+  .share__poster * {
+    visibility: visible !important;
+  }
+  .share__poster {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    position: fixed;
+    inset: 0;
+    padding: 48px;
+    background: #fff;
+    color: #000;
+    text-align: center;
+  }
+  .share__poster h1 {
+    margin: 0;
+    font-size: 44px;
+  }
+  .share__poster-lead {
+    margin: 0;
+    font-size: 30px;
+    font-weight: 700;
+  }
+  .share__poster img {
+    width: 70vmin;
+    height: 70vmin;
+  }
+  .share__poster-cta {
+    margin: 0;
+    font-size: 22px;
+  }
+  .share__poster-url {
+    margin: 0;
+    font-size: 18px;
+    word-break: break-all;
   }
 }
 
@@ -1190,4 +1293,82 @@
 .form__hint,
 .ui-field__hint {
   color: color-mix(in srgb, var(--c-muted) 75%, var(--c-text));
+}
+
+/* --- Minha conta ------------------------------------------------------------ */
+.account {
+  max-width: 520px;
+}
+.account form {
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.admin__account {
+  color: var(--c-muted);
+  text-decoration: none;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--radius-sm);
+}
+.admin__account:hover,
+.admin__account.active {
+  color: var(--c-text);
+  background: var(--surface-hover);
+}
+
+/*
+ * Celular: o menu ganha a própria linha e rola DENTRO dele. Sem isto, os cinco
+ * links somados (mais nome e botões) eram mais largos que a tela e a página
+ * inteira rolava para o lado — em todas as telas do painel.
+ */
+@media (max-width: 820px) {
+  .admin__top {
+    gap: var(--sp-2) var(--sp-3);
+  }
+  .admin__user {
+    margin-left: auto;
+  }
+  .admin__nav {
+    order: 3;
+    flex: 1 0 100%;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .admin__nav::-webkit-scrollbar {
+    display: none;
+  }
+  .admin__nav a {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 0 var(--sp-3);
+  }
+}
+
+@media (max-width: 820px) {
+  .admin__top {
+    flex-wrap: wrap;
+  }
+  /* Loja à esquerda, usuário à direita, na MESMA linha; nomes longos viram "…". */
+  .admin__brand {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .admin__brand strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .admin__user {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .admin__account {
+    max-width: 88px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }

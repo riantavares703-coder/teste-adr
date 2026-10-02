@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import QRCode from 'qrcode';
 import type { OrderDetail, PaymentView } from '@plataforma/client';
 import { PAYMENT_METHOD_LABEL } from '@plataforma/domain';
-import { AsyncBoundary, Badge, Price, Row, Skeleton, useRealtime, type Tone } from '@plataforma/ui-web';
+import { AsyncBoundary, Badge, Price, Row, Skeleton, copyText, useRealtime, type Tone } from '@plataforma/ui-web';
 import { useStore } from '../store-context';
 
 /**
@@ -104,45 +104,6 @@ function PreparationBar({ order }: { order: OrderDetail['order'] }) {
  * realmente vai acontecer, e a tela já está de olho no evento `payment.confirmed`
  * via `useRealtime` — quando a loja confirmar, o cartão troca sozinho.
  */
-/**
- * `navigator.clipboard` só existe em contexto seguro (HTTPS ou localhost). O
- * cliente abre o cardápio por http://192.168.x.x na rede da loja, onde ele é
- * `undefined` — por isso o fallback com seleção + execCommand.
- */
-async function copyText(text: string, shown: HTMLElement | null): Promise<boolean> {
-  try {
-    if (window.isSecureContext && navigator.clipboard) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    // cai para o método legado
-  }
-  const area = document.createElement('textarea');
-  area.value = text;
-  area.setAttribute('readonly', '');
-  area.style.cssText = 'position:fixed;top:0;left:0;opacity:0;font-size:16px';
-  document.body.appendChild(area);
-  area.focus();
-  area.select();
-  area.setSelectionRange(0, text.length);
-  let ok = false;
-  try {
-    ok = document.execCommand('copy');
-  } catch {
-    ok = false;
-  }
-  document.body.removeChild(area);
-  if (!ok && shown) {
-    const range = document.createRange();
-    range.selectNodeContents(shown);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-  }
-  return ok;
-}
-
 function PaymentCard({ payment, totalCents }: { payment: PaymentView; totalCents: number }) {
   const [qr, setQr] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);

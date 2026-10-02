@@ -44,16 +44,22 @@ Senha:  restaurante123
 
 O cliente informa só **nome e telefone** — não precisa criar conta nem instalar nada.
 
-> **Importante:** o celular do cliente precisa estar no **mesmo Wi-Fi** da loja.
+> **Importante:** o endereço mostrado ao abrir (`http://192.168...`) só funciona para quem está no
+> **mesmo Wi-Fi** da loja. Para o cliente abrir **de casa ou no 4G**, o cardápio precisa de um endereço
+> público: veja [`docs/PUBLICAR.md`](docs/PUBLICAR.md). Quando tiver um, cadastre-o em **Compartilhar** —
+> a tela mostra, com todas as letras, até onde o link e o QR code alcançam.
+>
 > Se o painel avisar que o endereço só funciona neste computador, é porque esta máquina
 > não está conectada à rede da loja.
+>
+> Antes de divulgar um link público, **troque a senha** em *Minha conta* (clique no seu nome, no topo).
 
 ---
 
 ## Perguntas frequentes
 
 **Preciso de internet?**
-Só na primeira execução, para baixar o banco de dados. Depois funciona na rede local, sem internet.
+Só na primeira execução, para baixar o banco de dados. Depois funciona na rede local, sem internet — mas um link público para clientes em casa, a confirmação automática do Pix e o mapa de entrega precisam de internet.
 
 **Onde ficam meus dados?**
 Na pasta `runtime/`, dentro do programa. Faça cópia dela para não perder nada.

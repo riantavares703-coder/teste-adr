@@ -5,8 +5,10 @@ import { and, eq, gt, isNull, or, sql } from 'drizzle-orm';
 import { Database } from '../../db/client.js';
 import * as s from '../../db/schema.js';
 import { loadEnv } from '../../config/env.js';
-import { forbidden, tooManyRequests, unauthorized } from '../../common/errors.js';
+import { forbidden, tooManyRequests, unauthorized, unprocessable } from '../../common/errors.js';
+import { DEFAULT_ADMIN_PASSWORD } from '../../common/default-credentials.js';
 import type { Principal } from '../../common/principal.js';
+import { AuditService } from '../audit/audit.service.js';
 import { PasswordService } from './password.service.js';
 import { TokenService } from './token.service.js';
 import { OtpDeliveryService } from './otp-delivery.service.js';
@@ -38,6 +40,7 @@ export class AuthService {
   constructor(
     @Inject(Database) private readonly db: Database,
     @Inject(PasswordService) private readonly passwords: PasswordService,
+    @Inject(AuditService) private readonly audit: AuditService,
     @Inject(TokenService) private readonly tokens: TokenService,
     @Inject(OtpDeliveryService) private readonly otpDelivery: OtpDeliveryService,
   ) {}
@@ -105,6 +108,94 @@ export class AuthService {
     await this.recordLoginAttempt(input.email, user.id, true, null, input.ip);
 
     return this.issueSession(user.id, 'STAFF', user.organizationId, user.tokenVersion, input);
+  }
+
+  /**
+   * Troca de senha do operador logado.
+   *
+   * Exige a senha ATUAL (um token de acesso roubado não basta para trancar o
+   * dono para fora) e conta erros no mesmo bloqueio progressivo do login. Ao
+   * trocar, TODAS as sessões e tokens anteriores caem — se alguém tinha a senha
+   * antiga, perde o acesso — e o dispositivo atual recebe uma sessão nova para
+   * não ser deslogado.
+   */
+  async changePassword(
+    principal: Principal,
+    input: {
+      currentPassword: string;
+      newPassword: string;
+      ip?: string;
+      userAgent?: string;
+      deviceId?: string;
+    },
+  ): Promise<TokenPair> {
+    if (principal.userType !== 'STAFF') throw forbidden();
+
+    const policy = PasswordService.validatePolicy(input.newPassword);
+    if (!policy.ok) throw unprocessable('SENHA_FRACA', policy.reason);
+    if (input.newPassword === input.currentPassword) {
+      throw unprocessable('SENHA_IGUAL', 'A nova senha precisa ser diferente da atual');
+    }
+    // Publicada no README: nunca pode voltar a ser a senha de ninguém.
+    if (input.newPassword === DEFAULT_ADMIN_PASSWORD) {
+      throw unprocessable('SENHA_FRACA', 'Essa senha é pública (está no manual). Escolha outra.');
+    }
+
+    const rows = await this.db.platform
+      .select()
+      .from(s.users)
+      .where(and(eq(s.users.id, principal.userId), isNull(s.users.deletedAt)))
+      .limit(1);
+    const user = rows[0];
+    if (!user || !user.isActive) throw unauthorized('SESSAO_INVALIDA', 'Sessão inválida');
+
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      throw tooManyRequests('MUITAS_TENTATIVAS', 'Muitas tentativas. Aguarde alguns minutos.');
+    }
+
+    if (!(await this.passwords.verify(user.passwordHash, input.currentPassword))) {
+      await this.registerFailure(user.id, user.failedLoginCount);
+      await this.recordLoginAttempt(user.email ?? user.id, user.id, false, 'SENHA_ATUAL_INVALIDA', input.ip);
+      throw unprocessable('SENHA_ATUAL_INCORRETA', 'A senha atual está incorreta');
+    }
+
+    const newHash = await this.passwords.hash(input.newPassword);
+    const now = new Date();
+
+    const tokenVersion = await this.db.withPlatform(async (tx) => {
+      const updated = await tx
+        .update(s.users)
+        .set({
+          passwordHash: newHash,
+          passwordUpdatedAt: now,
+          failedLoginCount: 0,
+          lockedUntil: null,
+          tokenVersion: sql`${s.users.tokenVersion} + 1`,
+          updatedAt: now,
+        })
+        .where(eq(s.users.id, user.id))
+        .returning({ tokenVersion: s.users.tokenVersion });
+
+      await tx
+        .update(s.sessions)
+        .set({ revokedAt: now, revokedReason: 'PASSWORD_CHANGED' })
+        .where(and(eq(s.sessions.userId, user.id), isNull(s.sessions.revokedAt)));
+
+      await this.audit.record(tx, {
+        principal,
+        organizationId: user.organizationId,
+        action: 'auth.password_changed',
+        resourceType: 'user',
+        resourceId: user.id,
+        ip: input.ip,
+        // Nunca a senha, nem o hash: só o fato.
+        metadata: { sessionsRevoked: true },
+      });
+
+      return updated[0]!.tokenVersion;
+    });
+
+    return this.issueSession(user.id, 'STAFF', user.organizationId, tokenVersion, input);
   }
 
   /** Bloqueio progressivo: 1, 2, 4, 8 e 30 minutos. Por conta E por IP. */

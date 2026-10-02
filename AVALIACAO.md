@@ -81,3 +81,28 @@ O token é validado no MP ao salvar, guardado cifrado e nunca devolvido pela API
 - Pix pago depois do cancelamento não confirma nada: fica registrado (`payment.received_after_cancel`)
   e a cobrança ganha o aviso "estornar no Mercado Pago". Hoje o aviso aparece só no
   registro/log; não há tela para isso.
+
+## Link público do cardápio
+
+- **Problema:** o link/QR usava o IP da rede local; só abria no Wi-Fi da loja.
+- **Agora:** a tela *Compartilhar* diz até onde o link alcança (público / só Wi-Fi da loja / só este
+  computador), aceita o endereço público da loja (https, só nome de site), **verifica pelo servidor**
+  que ele abre esta unidade e monta link e QR a partir dele. Também: copiar (funciona em HTTP),
+  compartilhar do celular, WhatsApp, baixar QR code e cartaz para imprimir.
+- **Segurança ao publicar:** a conta de demonstração tem senha pública (README). O sistema recusa
+  cadastrar o endereço público enquanto ela valer, avisa quando o link já é público por outro caminho
+  e há uma tela *Minha conta* para trocar a senha (exige a atual, encerra as sessões antigas, bloqueia
+  após 5 erros). O sistema não sobe em produção sem `DATA_ENCRYPTION_KEY` e `PASSWORD_PEPPER`
+  (sem elas, a chave Pix e os logins seriam perdidos no primeiro reinício).
+- **Verificação do endereço (proteção SSRF):** o servidor faz uma chamada a um endereço informado por
+  usuário; recusa IP interno/loopback/metadados no momento da conexão (inclusive IP literal e DNS
+  apontando para dentro), não segue redirecionamento e limita corpo e tempo.
+- **Painel no celular:** o menu estourava a largura em todas as telas; agora rola dentro dele.
+- **Testes novos:** 105 (endereços/SSRF), 39 (link, permissões, isolamento entre franquias, senha
+  padrão), 14 (troca de senha), 7 (configuração de produção). Mutações provadas: sem a guarda de IP
+  literal ou sem revogar sessões, os testes falham.
+- **Não verificado:** nada foi publicado em nenhuma hospedagem (o ambiente de desenvolvimento não
+  alcança a internet). A verificação de endereço foi testada contra servidores locais e domínios
+  inexistentes, não contra um site público real. Ver `docs/PUBLICAR.md`, que também avalia a Vercel.
+- **Lacuna conhecida:** não há comando para criar a loja REAL (só a de demonstração). Necessário antes
+  de hospedar de fato.

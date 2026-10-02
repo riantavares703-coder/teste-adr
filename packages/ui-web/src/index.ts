@@ -7,4 +7,5 @@ export * from './sheet.js';
 export * from './realtime.js';
 export * from './geo.js';
 export * from './food.js';
+export * from './clipboard.js';
 export * from './map-picker.js';

@@ -186,14 +186,48 @@ export interface StoreSettings {
   open: OpenState;
 }
 
+export type ShareReach = 'public' | 'lan' | 'local';
+export type ShareSource = 'setting' | 'env' | 'request' | 'lan' | 'localhost';
+export type ShareWarning = 'DEFAULT_ADMIN_PASSWORD' | 'INSECURE_HTTP';
+
 export interface ShareLink {
   organizationSlug: string;
   branchSlug: string;
-  /** URL que vai no QR code, já com o endereço de rede da máquina. */
+  /** URL que vai no QR code. */
   menuUrl: string;
+  /** Endereço-base em uso, sem o caminho da unidade. */
+  baseUrl: string;
+  /**
+   * Até onde o link alcança: `public` abre em qualquer rede (inclusive 4G, em
+   * casa); `lan` só no Wi-Fi da loja; `local` só neste computador.
+   */
+  reach: ShareReach;
+  source: ShareSource;
+  secure: boolean;
+  /** Endereço público cadastrado pelo dono; `null` se não houver. */
+  publicBaseUrl: string | null;
   lanAddress: string | null;
-  /** Falso quando o endereço só funciona na própria máquina do operador. */
+  /** Legado — use `reach`. */
   reachableFromPhones: boolean;
+  warnings: ShareWarning[];
+}
+
+export type ShareCheckFailure =
+  | 'NOT_PUBLIC'
+  | 'UNREACHABLE'
+  | 'TIMEOUT'
+  | 'BLOCKED_ADDRESS'
+  | 'TLS'
+  | 'REDIRECT'
+  | 'HTTP_STATUS'
+  | 'INVALID_RESPONSE'
+  | 'NOT_THIS_SYSTEM';
+
+export interface ShareCheck {
+  ok: boolean;
+  reason?: ShareCheckFailure;
+  httpStatus?: number;
+  checkedUrl: string;
 }
 
 export interface AnalyticsSummary {
@@ -587,6 +621,25 @@ export class ApiClient {
    */
   getShareLink(branchId: string): Promise<ShareLink> {
     return this.request('GET', `/v1/branches/${branchId}/share-link`);
+  }
+
+  /** Cadastra (ou, com `null`, remove) o endereço público do cardápio. */
+  setPublicBaseUrl(branchId: string, publicBaseUrl: string | null): Promise<ShareLink> {
+    return this.request('PUT', `/v1/branches/${branchId}/share-link`, { body: { publicBaseUrl } });
+  }
+
+  /** Pede ao servidor que confirme se o endereço em uso abre este sistema pela internet. */
+  checkShareLink(branchId: string): Promise<ShareCheck> {
+    return this.request('POST', `/v1/branches/${branchId}/share-link/check`, { body: {} });
+  }
+
+  /**
+   * Troca a senha do operador logado. O servidor encerra todas as sessões
+   * anteriores e devolve uma nova, que passa a valer neste aparelho.
+   */
+  async changePassword(input: { currentPassword: string; newPassword: string }): Promise<void> {
+    const session = await this.request<Session>('POST', '/v1/auth/password', { body: input });
+    await this.saveSession(session);
   }
 
   // --- opções do produto (grupos e opções) -----------------------------------
