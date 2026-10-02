@@ -4,6 +4,7 @@ import {
   centsToEmvAmount,
   crc16ccitt,
   maskPixKey,
+  normalizePixKey,
   parseEmv,
   PixBrCodeError,
   sanitizeEmvText,
@@ -135,5 +136,37 @@ describe('maskPixKey', () => {
   it('mostra apenas os quatro últimos caracteres', () => {
     expect(maskPixKey('contato@loja.com.br')).toBe('•••m.br');
     expect(maskPixKey('12345678909')).toBe('•••8909');
+  });
+});
+
+describe('normalizePixKey', () => {
+  it('converte telefone digitado com máscara para +55DDDNÚMERO', () => {
+    expect(normalizePixKey('PHONE', '(11) 99999-1234')).toBe('+5511999991234');
+    expect(normalizePixKey('PHONE', '+55 11 99999-1234')).toBe('+5511999991234');
+    expect(normalizePixKey('PHONE', '5511999991234')).toBe('+5511999991234');
+  });
+
+  it('remove máscara de CPF e CNPJ e valida dígitos verificadores', () => {
+    expect(normalizePixKey('CPF', '529.982.247-25')).toBe('52998224725');
+    expect(normalizePixKey('CNPJ', '11.222.333/0001-81')).toBe('11222333000181');
+    expect(() => normalizePixKey('CPF', '111.111.111-11')).toThrow(PixBrCodeError);
+    expect(() => normalizePixKey('CPF', '529.982.247-24')).toThrow(PixBrCodeError);
+    expect(() => normalizePixKey('CNPJ', '11.222.333/0001-82')).toThrow(PixBrCodeError);
+  });
+
+  it('põe e-mail e chave aleatória em minúsculas', () => {
+    expect(normalizePixKey('EMAIL', ' Loja@Exemplo.COM ')).toBe('loja@exemplo.com');
+    expect(normalizePixKey('RANDOM', '123E4567-E89B-12D3-A456-426614174000')).toBe(
+      '123e4567-e89b-12d3-a456-426614174000',
+    );
+    expect(() => normalizePixKey('RANDOM', 'nao-e-uuid')).toThrow(PixBrCodeError);
+  });
+
+  it('o BR Code gerado carrega a chave canônica, sem máscara', () => {
+    const key = normalizePixKey('PHONE', '(11) 99999-1234');
+    const code = buildPixBrCode({ key, merchantName: 'Loja', merchantCity: 'Sao Paulo', amountCents: 2990, txid: '1001' });
+    expect(code).toContain('+5511999991234');
+    expect(code).not.toContain('(11)');
+    expect(validateBrCodeChecksum(code)).toBe(true);
   });
 });

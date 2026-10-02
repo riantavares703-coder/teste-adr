@@ -2,7 +2,14 @@ import { Inject, Injectable } from '@nestjs/common';
 import { uuidv7 } from '../../common/uuid.js';
 
 import { and, desc, eq } from 'drizzle-orm';
-import { canTransitionPayment, maskPixKey, type PaymentMethod } from '@plataforma/domain';
+import {
+  canTransitionPayment,
+  maskPixKey,
+  normalizePixKey,
+  PixBrCodeError,
+  type PaymentMethod,
+  type PixKeyType,
+} from '@plataforma/domain';
 import { Database, type Db } from '../../db/client.js';
 import * as s from '../../db/schema.js';
 import { conflict, notFound, unprocessable } from '../../common/errors.js';
@@ -25,6 +32,15 @@ export class PaymentsService {
     @Inject(OutboxService) private readonly outbox: OutboxService,
     @Inject(BranchAccessService) private readonly branchAccess: BranchAccessService,
   ) {}
+
+  private canonicalKey(type: PixKeyType, raw: string): string {
+    try {
+      return normalizePixKey(type, raw);
+    } catch (err) {
+      if (err instanceof PixBrCodeError) throw unprocessable('CHAVE_PIX_INVALIDA', err.message);
+      throw err;
+    }
+  }
 
   /** Cria o pagamento junto com o pedido, na mesma transação. */
   async createForOrder(
@@ -62,7 +78,8 @@ export class PaymentsService {
         );
       }
       // Decifra apenas no momento de gerar o BR Code. Toda decifragem é auditada.
-      pixKey = this.crypto.decrypt(Buffer.from(config.keyEncrypted));
+      // Linhas gravadas antes da normalização podem ter a chave como foi digitada.
+      pixKey = this.canonicalKey(config.keyType as PixKeyType, this.crypto.decrypt(Buffer.from(config.keyEncrypted)));
       merchantName = config.merchantName;
       merchantCity = config.merchantCity;
       keyLast4 = config.keyLast4;
@@ -287,7 +304,7 @@ export class PaymentsService {
       const branch = branchRows[0];
       if (!branch) throw notFound();
 
-      const trimmed = input.key.trim();
+      const trimmed = this.canonicalKey(input.keyType, input.key);
       const encrypted = this.crypto.encrypt(trimmed);
       const fingerprint = this.crypto.fingerprint(trimmed);
       const last4 = trimmed.slice(-4);
