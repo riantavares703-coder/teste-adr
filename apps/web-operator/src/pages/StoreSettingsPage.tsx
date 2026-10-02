@@ -8,6 +8,7 @@ import {
 } from '@plataforma/domain';
 import { AsyncBoundary, Badge, Button, Notice, friendlyMessage } from '@plataforma/ui-web';
 import { useSession } from '../session';
+import { DeliveryZoneCard } from '../components/DeliveryZoneCard';
 import { centsToInput, inputToCents } from '../components/ProductForm';
 
 const METHOD_LABEL: Record<string, string> = {
@@ -459,6 +460,7 @@ export function StoreSettingsPage() {
                 ) : null}
               </div>
             ) : null}
+            <DeliveryZoneCard branchId={branch.id} editable={editable} />
           </>
         ) : null}
       </AsyncBoundary>
