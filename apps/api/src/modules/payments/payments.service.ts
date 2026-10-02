@@ -1,7 +1,7 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from '../../common/uuid.js';
 
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, gt } from 'drizzle-orm';
 import {
   canTransitionPayment,
   maskPixKey,
@@ -17,12 +17,22 @@ import { toTenantContext, type Principal } from '../../common/principal.js';
 import { AuditService } from '../audit/audit.service.js';
 import { OutboxService } from '../notifications/outbox.service.js';
 import { CryptoService } from './crypto.service.js';
-import { ManualPixProvider, OnSitePaymentProvider, type PaymentProvider } from './payment-provider.js';
+import {
+  fetchMercadoPagoPayment,
+  ManualPixProvider,
+  MercadoPagoError,
+  MercadoPagoPixProvider,
+  OnSitePaymentProvider,
+  verifyMercadoPagoToken,
+  type PaymentProvider,
+} from './payment-provider.js';
 import { BranchAccessService } from '../tenancy/branch-access.service.js';
 
 @Injectable()
 export class PaymentsService {
+  private readonly logger = new Logger('Payments');
   private readonly pixProvider: PaymentProvider = new ManualPixProvider();
+  private readonly mercadoPagoProvider: PaymentProvider = new MercadoPagoPixProvider();
   private readonly onSiteProvider: PaymentProvider = new OnSitePaymentProvider();
 
   constructor(
@@ -58,6 +68,7 @@ export class PaymentsService {
     let merchantName: string | undefined;
     let merchantCity: string | undefined;
     let keyLast4: string | null = null;
+    let accessToken: string | undefined;
 
     if (input.method === 'PIX') {
       const rows = await tx
@@ -83,17 +94,38 @@ export class PaymentsService {
       merchantName = config.merchantName;
       merchantCity = config.merchantCity;
       keyLast4 = config.keyLast4;
+      if (config.mpAccessTokenEncrypted) {
+        accessToken = this.crypto.decrypt(Buffer.from(config.mpAccessTokenEncrypted));
+      }
     }
 
-    const provider = input.method === 'PIX' ? this.pixProvider : this.onSiteProvider;
-    const charge = await provider.createCharge({
+    const chargeInput = {
       orderId: input.orderId,
       orderNumber: input.orderNumber,
       amountCents: input.amountCents,
       pixKey,
       merchantName,
       merchantCity,
-    });
+      accessToken,
+    };
+
+    let charge;
+    if (input.method !== 'PIX') {
+      charge = await this.onSiteProvider.createCharge(chargeInput);
+    } else if (accessToken) {
+      try {
+        charge = await this.mercadoPagoProvider.createCharge(chargeInput);
+      } catch (err) {
+        // Mercado Pago fora do ar não pode impedir a loja de vender: cai para o
+        // BR Code estático com a chave da loja. O cliente paga do mesmo jeito;
+        // só a confirmação volta a ser manual (provider = MANUAL_PIX deixa isso explícito).
+        if (!(err instanceof MercadoPagoError)) throw err;
+        this.logger.warn(`Mercado Pago falhou (${err.message}); usando Pix estático`);
+        charge = await this.pixProvider.createCharge(chargeInput);
+      }
+    } else {
+      charge = await this.pixProvider.createCharge(chargeInput);
+    }
 
     await tx.insert(s.payments).values({
       id: uuidv7(),
@@ -145,41 +177,12 @@ export class PaymentsService {
         throw conflict(check.code, check.message, { from: payment.status });
       }
 
-      const now = new Date();
-      await tx
-        .update(s.payments)
-        .set({
-          status: 'CONFIRMED',
-          confirmedBy: principal.userId,
-          confirmedAt: now,
-          confirmedIp: options.ip ?? null,
-          confirmationNote: options.note ?? null,
-        })
-        .where(eq(s.payments.id, paymentId));
-
-      await this.audit.record(tx, {
+      await this.applyConfirmation(tx, payment, {
         principal,
-        organizationId: payment.organizationId,
-        branchId,
-        action: 'payment.confirmed_manually',
-        resourceType: 'payment',
-        resourceId: paymentId,
+        actorType: 'STAFF',
         ip: options.ip,
-        metadata: {
-          orderId: payment.orderId,
-          amountCents: payment.amountCents,
-          method: payment.method,
-          note: options.note ?? null,
-        },
-      });
-
-      await this.outbox.publish(tx, {
-        organizationId: payment.organizationId,
-        branchId,
-        aggregateType: 'payment',
-        aggregateId: paymentId,
-        eventType: 'payment.confirmed',
-        payload: { orderId: payment.orderId, paymentId, amountCents: payment.amountCents },
+        note: options.note,
+        action: 'payment.confirmed_manually',
       });
 
       const orderRows = await tx
@@ -194,6 +197,162 @@ export class PaymentsService {
         // pedido sozinho. O operador aceita o pedido em uma ação separada.
         orderStatus: orderRows[0]?.status ?? 'PENDING',
       };
+    });
+  }
+
+  /** Grava a confirmação, audita e notifica. Compartilhado entre operador e conciliação automática. */
+  private async applyConfirmation(
+    tx: Db,
+    payment: typeof s.payments.$inferSelect,
+    by: {
+      principal?: Principal;
+      actorType: 'STAFF' | 'WEBHOOK';
+      ip?: string;
+      note?: string;
+      action: string;
+    },
+  ): Promise<void> {
+    await tx
+      .update(s.payments)
+      .set({
+        status: 'CONFIRMED',
+        confirmedBy: by.principal?.userId ?? null,
+        confirmedAt: new Date(),
+        confirmedIp: by.ip ?? null,
+        confirmationNote: by.note ?? null,
+      })
+      .where(eq(s.payments.id, payment.id));
+
+    await this.audit.record(tx, {
+      principal: by.principal ?? null,
+      organizationId: payment.organizationId,
+      branchId: payment.branchId,
+      action: by.action,
+      resourceType: 'payment',
+      resourceId: payment.id,
+      ip: by.ip,
+      metadata: {
+        orderId: payment.orderId,
+        amountCents: payment.amountCents,
+        method: payment.method,
+        provider: payment.provider,
+        providerPaymentId: payment.providerPaymentId,
+        note: by.note ?? null,
+      },
+    });
+
+    await this.outbox.publish(tx, {
+      organizationId: payment.organizationId,
+      branchId: payment.branchId,
+      aggregateType: 'payment',
+      aggregateId: payment.id,
+      eventType: 'payment.confirmed',
+      payload: { orderId: payment.orderId, paymentId: payment.id, amountCents: payment.amountCents },
+    });
+  }
+
+  /**
+   * Conciliação automática: pergunta ao Mercado Pago pelos Pix em aberto.
+   *
+   * É consulta (polling), não webhook, de propósito: o sistema roda no
+   * computador da loja, que o Mercado Pago não alcança. Só precisa de internet
+   * de saída.
+   *
+   * O valor e a referência do pagamento são conferidos contra o NOSSO pedido
+   * antes de confirmar — a resposta do provedor nunca é a fonte do valor.
+   */
+  async reconcileMercadoPago(): Promise<number> {
+    const since = new Date(Date.now() - 6 * 60 * 60_000);
+    const open = await this.db.withPlatform(async (tx) => {
+      const rows = await tx
+        .select({
+          payment: s.payments,
+          tokenEncrypted: s.pixSettings.mpAccessTokenEncrypted,
+        })
+        .from(s.payments)
+        .innerJoin(s.pixSettings, eq(s.pixSettings.branchId, s.payments.branchId))
+        .where(
+          and(
+            eq(s.payments.provider, 'MERCADO_PAGO'),
+            eq(s.payments.status, 'AWAITING_CONFIRMATION'),
+            gt(s.payments.createdAt, since),
+          ),
+        )
+        .orderBy(s.payments.createdAt)
+        .limit(50);
+      return rows;
+    });
+
+    let confirmed = 0;
+    for (const { payment, tokenEncrypted } of open) {
+      if (!tokenEncrypted || !payment.providerPaymentId) continue;
+      try {
+        const token = this.crypto.decrypt(Buffer.from(tokenEncrypted));
+        const remote = await fetchMercadoPagoPayment(token, payment.providerPaymentId);
+        if (remote.status === 'approved') {
+          if (await this.confirmFromProvider(payment.id, remote)) confirmed += 1;
+        } else if (remote.status === 'rejected' || remote.status === 'cancelled') {
+          await this.failFromProvider(payment.id, `Mercado Pago: ${remote.status}`);
+        }
+      } catch (err) {
+        // Um pagamento com erro não pode travar os demais; a próxima rodada tenta de novo.
+        this.logger.warn(`Conciliação do pagamento ${payment.id} falhou: ${(err as Error).message}`);
+      }
+    }
+    return confirmed;
+  }
+
+  private async confirmFromProvider(
+    paymentId: string,
+    remote: { id: string; amountCents: number; externalReference: string | null },
+  ): Promise<boolean> {
+    return this.db.withPlatform(async (tx) => {
+      const rows = await tx
+        .select()
+        .from(s.payments)
+        .where(and(eq(s.payments.id, paymentId), eq(s.payments.status, 'AWAITING_CONFIRMATION')))
+        .for('update')
+        .limit(1);
+      const payment = rows[0];
+      if (!payment) return false;
+
+      if (remote.amountCents !== payment.amountCents || remote.externalReference !== payment.orderId) {
+        // Aprovado, mas não bate com o pedido: NÃO confirma e deixa rastro para a loja investigar.
+        await this.audit.record(tx, {
+          organizationId: payment.organizationId,
+          branchId: payment.branchId,
+          action: 'payment.provider_mismatch',
+          resourceType: 'payment',
+          resourceId: payment.id,
+          result: 'FAILURE',
+          metadata: {
+            expectedCents: payment.amountCents,
+            receivedCents: remote.amountCents,
+            referenceMatches: remote.externalReference === payment.orderId,
+          },
+        });
+        this.logger.error(`Pagamento ${payment.id}: valor/referência do Mercado Pago não conferem`);
+        return false;
+      }
+
+      const check = canTransitionPayment({ from: payment.status, to: 'CONFIRMED', actorType: 'WEBHOOK' });
+      if (!check.allowed) return false;
+
+      await this.applyConfirmation(tx, payment, {
+        actorType: 'WEBHOOK',
+        note: `Confirmado automaticamente pelo Mercado Pago (pagamento ${remote.id})`,
+        action: 'payment.confirmed_by_provider',
+      });
+      return true;
+    });
+  }
+
+  private async failFromProvider(paymentId: string, reason: string): Promise<void> {
+    await this.db.withPlatform(async (tx) => {
+      await tx
+        .update(s.payments)
+        .set({ status: 'FAILED', failureReason: reason })
+        .where(and(eq(s.payments.id, paymentId), eq(s.payments.status, 'AWAITING_CONFIRMATION')));
     });
   }
 
@@ -218,8 +377,8 @@ export class PaymentsService {
         pixBrcode: payment.pixBrcode,
         pixKeyMasked: payment.pixKeyLast4 ? `•••${payment.pixKeyLast4}` : null,
         provider: payment.provider,
-        // Comunicação honesta ao cliente: nenhum provedor confirma sozinho hoje.
-        automaticConfirmation: false,
+        // Só o Mercado Pago confirma sozinho; Pix estático e pagamento presencial dependem da loja.
+        automaticConfirmation: payment.provider === 'MERCADO_PAGO',
         confirmedAt: payment.confirmedAt,
       };
     });
@@ -245,6 +404,8 @@ export class PaymentsService {
     keyMasked: string | null;
     merchantName: string | null;
     merchantCity: string | null;
+    mercadoPagoConfigured: boolean;
+    mercadoPagoTokenMasked: string | null;
   }> {
     await this.branchAccess.assertAccess(principal, branchId);
 
@@ -266,6 +427,8 @@ export class PaymentsService {
           keyMasked: null,
           merchantName: null,
           merchantCity: null,
+          mercadoPagoConfigured: false,
+          mercadoPagoTokenMasked: null,
         };
       }
       return {
@@ -274,6 +437,8 @@ export class PaymentsService {
         keyMasked: `•••${config.keyLast4}`,
         merchantName: config.merchantName,
         merchantCity: config.merchantCity,
+        mercadoPagoConfigured: Boolean(config.mpAccessTokenEncrypted),
+        mercadoPagoTokenMasked: config.mpTokenLast4 ? `•••${config.mpTokenLast4}` : null,
       };
     });
   }
@@ -291,9 +456,36 @@ export class PaymentsService {
       key: string;
       merchantName: string;
       merchantCity: string;
+      /** undefined = mantém o atual; null = remove; string = troca. */
+      mercadoPagoAccessToken?: string | null;
     },
   ): Promise<{ keyMasked: string }> {
     await this.branchAccess.assertAccess(principal, branchId);
+
+    const mpToken = input.mercadoPagoAccessToken?.trim();
+    if (mpToken) {
+      try {
+        await verifyMercadoPagoToken(mpToken);
+      } catch (err) {
+        if (!(err instanceof MercadoPagoError)) throw err;
+        if (err.httpStatus === 401 || err.httpStatus === 403) {
+          throw unprocessable(
+            'MERCADO_PAGO_TOKEN_INVALIDO',
+            'O Mercado Pago recusou este access token.',
+          );
+        }
+        throw unprocessable(
+          'MERCADO_PAGO_INDISPONIVEL',
+          'Não foi possível validar o token no Mercado Pago agora.',
+        );
+      }
+    }
+    const mpPatch =
+      input.mercadoPagoAccessToken === undefined
+        ? {}
+        : mpToken
+          ? { mpAccessTokenEncrypted: this.crypto.encrypt(mpToken), mpTokenLast4: mpToken.slice(-4) }
+          : { mpAccessTokenEncrypted: null, mpTokenLast4: null };
 
     return this.db.withTenant(toTenantContext(principal), async (tx) => {
       const branchRows = await tx
@@ -332,6 +524,7 @@ export class PaymentsService {
             // Um salvamento real pelo lojista sempre substitui a chave de
             // demonstração, mesmo que a linha tenha nascido do seed.
             isDemoSeed: false,
+            ...mpPatch,
             updatedBy: principal.userId,
           } as never)
           .where(eq(s.pixSettings.branchId, branchId));
@@ -345,6 +538,7 @@ export class PaymentsService {
           keyFingerprint: fingerprint,
           merchantName: input.merchantName.slice(0, 25),
           merchantCity: input.merchantCity.slice(0, 15),
+          ...mpPatch,
           updatedBy: principal.userId,
         } as never);
       }
@@ -357,7 +551,12 @@ export class PaymentsService {
         resourceType: 'pix_settings',
         resourceId: branchId,
         // A chave NUNCA entra na auditoria — só o fato de ter mudado.
-        metadata: { keyType: input.keyType, keyChanged: changed, keyLast4: last4 },
+        metadata: {
+          keyType: input.keyType,
+          keyChanged: changed,
+          keyLast4: last4,
+          mercadoPagoChanged: input.mercadoPagoAccessToken !== undefined,
+        },
       });
 
       return { keyMasked: maskPixKey(trimmed) };

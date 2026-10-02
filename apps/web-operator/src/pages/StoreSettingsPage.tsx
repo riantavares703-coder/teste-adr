@@ -55,6 +55,7 @@ export function StoreSettingsPage() {
   const [pixKey, setPixKey] = useState('');
   const [pixMerchantName, setPixMerchantName] = useState('');
   const [pixMerchantCity, setPixMerchantCity] = useState('');
+  const [mpToken, setMpToken] = useState('');
   const [pixError, setPixError] = useState<string | null>(null);
   const [pixSaving, setPixSaving] = useState(false);
 
@@ -162,9 +163,11 @@ export function StoreSettingsPage() {
         key: pixKey.trim(),
         merchantName: pixMerchantName.trim(),
         merchantCity: pixMerchantCity.trim(),
+        ...(mpToken.trim() ? { mercadoPagoAccessToken: mpToken.trim() } : {}),
       });
       setPix(await api.getPixSettings(branch.id));
       setPixKey('');
+      setMpToken('');
       announce('Chave Pix salva');
     } catch (e) {
       setPixError(friendlyMessage(e));
@@ -355,9 +358,9 @@ export function StoreSettingsPage() {
               <div className="ui-card">
                 <h3>Chave Pix</h3>
                 <p className="form__hint">
-                  Gerada no seu próprio celular ao pagar: sem taxa, sem intermediário. A loja
-                  precisa confirmar o recebimento manualmente — nenhum código Pix estático avisa
-                  sozinho que o dinheiro caiu.
+                  {pix?.mercadoPagoConfigured
+                    ? 'Mercado Pago ativo: cada pedido gera um Pix com o valor exato e o pagamento é confirmado automaticamente.'
+                    : 'Sem o Mercado Pago, o código Pix é estático e a loja precisa confirmar cada recebimento manualmente. Informe o access token abaixo para cobrar o valor exato e confirmar sozinho.'}
                 </p>
 
                 {pix?.configured ? (
@@ -421,6 +424,28 @@ export function StoreSettingsPage() {
                         maxLength={15}
                         onChange={(e) => setPixMerchantCity(e.target.value)}
                       />
+                    </div>
+
+                    <div className="ui-field">
+                      <label htmlFor="pixMp">
+                        Access token do Mercado Pago (opcional)
+                        {pix?.mercadoPagoTokenMasked ? ` — atual: ${pix.mercadoPagoTokenMasked}` : ''}
+                      </label>
+                      <input
+                        id="pixMp"
+                        className="ui-input"
+                        type="password"
+                        autoComplete="off"
+                        value={mpToken}
+                        placeholder="APP_USR-..."
+                        onChange={(e) => setMpToken(e.target.value)}
+                      />
+                      <p className="form__hint">
+                        Em Mercado Pago &gt; Seu negócio &gt; Configurações &gt; Credenciais, copie o
+                        Access Token de <strong>produção</strong>. É validado ao salvar e guardado
+                        cifrado. A chave acima continua sendo usada se o Mercado Pago estiver fora
+                        do ar.
+                      </p>
                     </div>
 
                     {pixError ? <Notice tone="danger">{pixError}</Notice> : null}

@@ -18,6 +18,7 @@ const PixSettingsSchema = z
     key: z.string().min(1).max(77),
     merchantName: z.string().min(1).max(25),
     merchantCity: z.string().min(1).max(15),
+    mercadoPagoAccessToken: z.string().trim().min(20).max(300).nullable().optional(),
   })
   .strict();
 

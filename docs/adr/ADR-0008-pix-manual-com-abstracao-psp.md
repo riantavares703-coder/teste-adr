@@ -101,3 +101,14 @@ motivo, sem apagar o registro anterior.
 - O volume de confirmações manuais tornar o custo operacional maior que a taxa do PSP — este é o gatilho
   econômico, e deve ser medido desde a Fase 5.
 - O Banco Central alterar o padrão do BR Code.
+
+---
+
+## Atualização (2026-10): Fase 2 com Mercado Pago
+
+`MercadoPagoPixProvider` implementa a porta `PaymentProvider` (cobrança dinâmica com valor
+exato). A confirmação é por **consulta periódica** (`PaymentsService.reconcileMercadoPago`,
+a cada 5 s) e não por webhook, porque a API roda na rede local da loja e o provedor não a
+alcança. Valor e `external_reference` são conferidos contra o pedido antes de confirmar. Se o
+Mercado Pago falhar na criação da cobrança, o pedido usa o `ManualPixProvider` como
+contingência. A confirmação manual permanece disponível.
