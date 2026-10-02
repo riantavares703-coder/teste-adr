@@ -525,3 +525,63 @@ export function resolveTheme(input?: BrandingInput | null): ResolvedTheme {
     },
   };
 }
+
+/** Superfícies do modo escuro: neutras, para não brigar com a cor da marca da loja. */
+export const DARK_SURFACES = {
+  background: '#0e1117',
+  card: '#171b23',
+  text: '#f3f5f8',
+  border: '#2b313d',
+  overlay: '#000000b3',
+} as const;
+
+/**
+ * Clareia `color` (misturando com branco) até atingir `minContrast` contra `against`.
+ * Mantém a matiz da marca: só sobe o necessário, nunca troca a cor.
+ */
+function liftContrast(color: string, against: string, minContrast: number): string {
+  let current = color;
+  for (let step = 1; step <= 20 && contrastRatio(current, against) < minContrast; step++) {
+    current = mix(color, '#ffffff', step * 0.05);
+  }
+  return current;
+}
+
+/**
+ * Deriva o tema ESCURO do tema claro resolvido, com as mesmas garantias de
+ * leitura: texto >= 7:1 e texto de apoio >= 4,5:1 sobre o cartão, cor da marca
+ * >= 3:1 sobre o cartão (clareada só se preciso) e texto sobre cada cor da
+ * marca escolhido por `bestTextOn`. Gradiente e cor principal são clareados
+ * juntos, para o cabeçalho continuar coerente com o texto que vai sobre ele.
+ */
+export function toDarkTheme(theme: ResolvedTheme): ResolvedTheme {
+  const { background, card, text, border, overlay } = DARK_SURFACES;
+  const primary = liftContrast(theme.primary, card, 3);
+  const accent = liftContrast(theme.accent, card, 3);
+  // O "secundário" claro costuma ser quase preto (cabeçalhos, chips): no escuro some.
+  const secondary =
+    contrastRatio(theme.secondary, background) < 1.6 ? '#2a3140' : theme.secondary;
+  const colors: readonly [string, string] = theme.gradient.enabled
+    ? [
+        liftContrast(theme.gradient.colors[0], card, 3),
+        liftContrast(theme.gradient.colors[1], card, 3),
+      ]
+    : [primary, primary];
+
+  return {
+    ...theme,
+    primary,
+    onPrimary: bestTextOn(primary),
+    secondary,
+    onSecondary: bestTextOn(secondary),
+    accent,
+    onAccent: bestTextOn(accent),
+    text,
+    mutedText: mix(text, card, 0.35),
+    background,
+    card,
+    border,
+    overlay,
+    gradient: { ...theme.gradient, colors },
+  };
+}

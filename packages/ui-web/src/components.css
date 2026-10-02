@@ -75,7 +75,7 @@
 
 .ui-btn--danger {
   background: var(--c-danger);
-  color: #fff;
+  color: var(--c-on-danger, #fff);
   box-shadow: var(--shadow-sm);
 }
 
@@ -446,4 +446,89 @@
   background: var(--c-card);
   flex-shrink: 0;
   border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+}
+
+/* --- mapa ------------------------------------------------------------------ */
+.map-picker {
+  width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--c-border);
+  z-index: 0;
+}
+.map-pin span {
+  display: block;
+  width: 24px;
+  height: 24px;
+  margin: 2px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  border: 3px solid #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  box-sizing: border-box;
+}
+.addr-results {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--c-card);
+}
+.addr-results button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--c-border);
+  background: transparent;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.addr-results li:last-child button {
+  border-bottom: 0;
+}
+.addr-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 12px;
+}
+.addr-grid .addr-wide {
+  grid-column: 1 / -1;
+}
+
+/* --- alternador de tema ---------------------------------------------------- */
+.ui-themetoggle {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--c-border);
+  background: var(--c-card);
+  color: var(--c-text);
+  font-size: 1.05rem;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.ui-themetoggle:hover {
+  background: var(--surface-hover);
+}
+
+/* --- modo escuro: ajustes que não vêm das variáveis ------------------------- */
+:root[data-scheme='dark'] .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9);
+}
+:root[data-scheme='dark'] .leaflet-container {
+  background: #1b1f27;
+}
+:root[data-scheme='dark'] .leaflet-control-attribution {
+  background: rgb(23 27 35 / 0.8);
+  color: var(--c-muted);
+}
+:root[data-scheme='dark'] .leaflet-control-attribution a {
+  color: var(--c-text);
 }

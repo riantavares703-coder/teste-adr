@@ -92,6 +92,7 @@ export function MenuEditorPage() {
     }
   }
 
+  const withoutPhoto = products.filter((p) => p.isActive && !p.thumbUrl).length;
   const visible = filter ? products.filter((p) => p.categoryId === filter) : products;
 
   if (editing) {
@@ -118,6 +119,15 @@ export function MenuEditorPage() {
       {actionError ? (
         <div className="ui-notice ui-notice--danger" role="alert">
           {actionError}
+        </div>
+      ) : null}
+
+      {editable && withoutPhoto > 0 ? (
+        <div className="ui-notice ui-notice--info" role="status">
+          <strong>
+            {withoutPhoto === 1 ? '1 produto está sem foto' : `${withoutPhoto} produtos estão sem foto`}
+          </strong>
+          <span>Cardápio com foto vende mais. Toque em “Foto” no produto para adicionar.</span>
         </div>
       ) : null}
 
@@ -149,6 +159,21 @@ export function MenuEditorPage() {
 
             return (
               <li key={product.id} className="ui-card editor__item">
+                {product.thumbUrl ? (
+                  <img className="editor__thumb" src={product.thumbUrl} alt="" loading="lazy" />
+                ) : (
+                  <button
+                    type="button"
+                    className="editor__thumb editor__thumb--empty"
+                    disabled={!editable}
+                    aria-label={`Adicionar foto de ${product.name}`}
+                    title="Adicionar foto"
+                    onClick={() => setEditing(product)}
+                  >
+                    <span aria-hidden="true">📷</span>
+                    <small>Foto</small>
+                  </button>
+                )}
                 <div className="editor__info">
                   <div className="editor__title">
                     <strong>{product.name}</strong>
@@ -170,7 +195,7 @@ export function MenuEditorPage() {
                     aria-label={`${product.name}: ${disponivel ? 'disponível' : 'esgotado'}. Tocar para alternar.`}
                     onClick={() => void toggleAvailability(product)}
                   >
-                    {disponivel ? '✓ Tem' : '✕ Não tem'}
+                    {disponivel ? '✓ Disponível' : '✕ Esgotado'}
                   </button>
 
                   {editable ? (
@@ -178,9 +203,14 @@ export function MenuEditorPage() {
                       <Button variant="secondary" onClick={() => setEditing(product)}>
                         Editar
                       </Button>
-                      <Button variant="ghost" onClick={() => void remove(product)}>
-                        Remover
-                      </Button>
+                      <button
+                        type="button"
+                        className="editor__remove"
+                        aria-label={`Excluir ${product.name}`}
+                        onClick={() => void remove(product)}
+                      >
+                        Excluir
+                      </button>
                     </>
                   ) : null}
                 </div>

@@ -36,8 +36,10 @@ export async function createApp(): Promise<INestApplication> {
           // React injeta estilo inline; sem isto a página renderiza sem CSS.
           styleSrc: ["'self'", "'unsafe-inline'"],
           // `data:`/`blob:` cobrem o QR code gerado no próprio navegador.
-          imgSrc: ["'self'", 'data:', 'blob:'],
-          connectSrc: ["'self'", 'ws:', 'wss:'],
+          // Mapa de entrega: blocos do OpenStreetMap (única origem externa de imagem).
+          imgSrc: ["'self'", 'data:', 'blob:', 'https://tile.openstreetmap.org'],
+          // Busca/leitura de endereço (Nominatim), chamada do navegador do cliente.
+          connectSrc: ["'self'", 'ws:', 'wss:', 'https://nominatim.openstreetmap.org'],
           objectSrc: ["'none'"],
           frameAncestors: ["'none'"],
           // Este processo nunca serve HTTPS — é um servidor local/LAN puro.

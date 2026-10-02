@@ -1,8 +1,8 @@
-import { Body, Controller, Get, Headers, Inject, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Inject, Param, ParseUUIDPipe, Post, Put, Query, Req } from '@nestjs/common';
 import { z } from 'zod';
 import { ORDER_STATUS, type OrderStatus } from '@plataforma/domain';
 import { badRequest, unauthorized } from '../../common/errors.js';
-import { CurrentUser, RequirePermission, type Principal } from '../../common/principal.js';
+import { CurrentUser, Public, RequirePermission, type Principal } from '../../common/principal.js';
 import { ZodValidationPipe } from '../../common/http.js';
 import { OrderingService } from './ordering.service.js';
 
@@ -47,9 +47,91 @@ const TransitionSchema = z
   })
   .strict();
 
+const AddressSchema = z
+  .object({
+    postalCode: z.string().regex(/^\d{5}-?\d{3}$/),
+    street: z.string().trim().min(2).max(120),
+    streetNumber: z.string().trim().min(1).max(20),
+    complement: z.string().trim().max(80).optional(),
+    district: z.string().trim().min(2).max(80),
+    city: z.string().trim().min(2).max(80),
+    stateCode: z.string().length(2),
+    reference: z.string().trim().max(120).optional(),
+    latitude: z.number().min(-90).max(90).optional(),
+    longitude: z.number().min(-180).max(180).optional(),
+  })
+  .strict();
+
+const QuoteSchema = z
+  .object({
+    branchId: z.string().uuid(),
+    postalCode: z.string().regex(/^\d{5}-?\d{3}$/),
+    latitude: z.number().min(-90).max(90).optional(),
+    longitude: z.number().min(-180).max(180).optional(),
+  })
+  .strict();
+
+const DeliveryConfigSchema = z
+  .object({
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+    radiusMeters: z.number().int().min(200).max(50_000),
+    feeCents: z.number().int().min(0).max(100_000),
+    minOrderCents: z.number().int().min(0).max(1_000_000),
+    etaMinutes: z.number().int().min(5).max(240),
+    isActive: z.boolean(),
+  })
+  .strict();
+
 @Controller('v1')
 export class OrderingController {
   constructor(@Inject(OrderingService) private readonly ordering: OrderingService) {}
+
+  // --- entrega ---------------------------------------------------------------
+
+  @Post('me/addresses')
+  @RequirePermission('order:create')
+  async createAddress(
+    @Body(new ZodValidationPipe(AddressSchema)) body: z.infer<typeof AddressSchema>,
+    @CurrentUser() principal: Principal | null,
+  ) {
+    if (!principal) throw unauthorized();
+    return this.ordering.createAddress(principal, body);
+  }
+
+  @Post('public/delivery-quote')
+  @Public()
+  async quote(@Body(new ZodValidationPipe(QuoteSchema)) body: z.infer<typeof QuoteSchema>) {
+    return this.ordering.quoteDelivery(body);
+  }
+
+  @Get('public/branches/:branchId/delivery-info')
+  @Public()
+  async deliveryInfo(@Param('branchId', ParseUUIDPipe) branchId: string) {
+    return this.ordering.getDeliveryInfo(branchId);
+  }
+
+  @Get('branches/:branchId/delivery-zone')
+  @RequirePermission('settings:read')
+  async getDeliveryZone(
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @CurrentUser() principal: Principal | null,
+  ) {
+    if (!principal) throw unauthorized();
+    return this.ordering.getDeliveryConfig(principal, branchId);
+  }
+
+  @Put('branches/:branchId/delivery-zone')
+  @RequirePermission('settings:update')
+  async setDeliveryZone(
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @Body(new ZodValidationPipe(DeliveryConfigSchema)) body: z.infer<typeof DeliveryConfigSchema>,
+    @CurrentUser() principal: Principal | null,
+  ) {
+    if (!principal) throw unauthorized();
+    await this.ordering.setDeliveryConfig(principal, branchId, body);
+    return { ok: true };
+  }
 
   // --- cliente ---------------------------------------------------------------
 

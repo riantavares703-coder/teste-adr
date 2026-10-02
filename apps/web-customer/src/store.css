@@ -706,3 +706,82 @@
 .prep small {
   color: var(--c-muted);
 }
+
+.menu__themetoggle {
+  position: absolute;
+  top: var(--sp-3);
+  right: var(--sp-3);
+  z-index: 2;
+  background: rgb(255 255 255 / 0.2);
+  border-color: rgb(255 255 255 / 0.35);
+  backdrop-filter: blur(6px);
+}
+
+.card__img--ph {
+  display: grid;
+  place-items: center;
+  font-size: 2.1rem;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--c-primary) 14%, var(--c-card)),
+    color-mix(in srgb, var(--c-accent) 14%, var(--c-card))
+  );
+  border: 1px solid var(--c-border);
+}
+
+/* --- entrega em passos ------------------------------------------------------ */
+.deliv {
+  display: grid;
+  gap: var(--sp-3);
+}
+.deliv__title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  font-size: var(--text-lg);
+}
+.deliv__step {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-pill);
+  background: var(--c-primary);
+  color: var(--c-on-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+}
+.deliv__search {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-2);
+}
+.deliv__search > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.deliv__mapfoot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  color: var(--c-muted);
+}
+.deliv__link {
+  border: 0;
+  background: transparent;
+  color: var(--c-primary);
+  font: inherit;
+  font-weight: var(--weight-semibold);
+  min-height: var(--touch-min);
+  cursor: pointer;
+  text-align: left;
+  padding: 0;
+}
+
+.form__hint,
+.ui-field__hint {
+  color: color-mix(in srgb, var(--c-muted) 75%, var(--c-text));
+}

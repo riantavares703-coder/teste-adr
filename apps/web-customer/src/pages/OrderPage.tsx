@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import QRCode from 'qrcode';
 import type { OrderDetail, PaymentView } from '@plataforma/client';
@@ -104,9 +104,50 @@ function PreparationBar({ order }: { order: OrderDetail['order'] }) {
  * realmente vai acontecer, e a tela já está de olho no evento `payment.confirmed`
  * via `useRealtime` — quando a loja confirmar, o cartão troca sozinho.
  */
+/**
+ * `navigator.clipboard` só existe em contexto seguro (HTTPS ou localhost). O
+ * cliente abre o cardápio por http://192.168.x.x na rede da loja, onde ele é
+ * `undefined` — por isso o fallback com seleção + execCommand.
+ */
+async function copyText(text: string, shown: HTMLElement | null): Promise<boolean> {
+  try {
+    if (window.isSecureContext && navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // cai para o método legado
+  }
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.setAttribute('readonly', '');
+  area.style.cssText = 'position:fixed;top:0;left:0;opacity:0;font-size:16px';
+  document.body.appendChild(area);
+  area.focus();
+  area.select();
+  area.setSelectionRange(0, text.length);
+  let ok = false;
+  try {
+    ok = document.execCommand('copy');
+  } catch {
+    ok = false;
+  }
+  document.body.removeChild(area);
+  if (!ok && shown) {
+    const range = document.createRange();
+    range.selectNodeContents(shown);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }
+  return ok;
+}
+
 function PaymentCard({ payment, totalCents }: { payment: PaymentView; totalCents: number }) {
   const [qr, setQr] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
+  const codeRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     setQr(null);
@@ -126,13 +167,10 @@ function PaymentCard({ payment, totalCents }: { payment: PaymentView; totalCents
 
   async function copy() {
     if (!payment.pixBrcode) return;
-    try {
-      await navigator.clipboard.writeText(payment.pixBrcode);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
-    } catch {
-      // Sem permissão de área de transferência: o código está selecionável na tela.
-    }
+    const ok = await copyText(payment.pixBrcode, codeRef.current);
+    setCopyFailed(!ok);
+    setCopied(ok);
+    if (ok) setTimeout(() => setCopied(false), 2500);
   }
 
   if (payment.status === 'CONFIRMED') {
@@ -169,7 +207,11 @@ function PaymentCard({ payment, totalCents }: { payment: PaymentView; totalCents
         {copied ? 'Código copiado!' : 'Copiar código Pix'}
       </button>
 
-      <code className="pay__code">{payment.pixBrcode}</code>
+      <code className="pay__code" ref={codeRef}>{payment.pixBrcode}</code>
+
+      {copyFailed ? (
+        <small role="alert">Não foi possível copiar automaticamente. Toque no código acima, segure e escolha “Copiar”.</small>
+      ) : null}
 
       {payment.pixKeyMasked ? <small>Chave da loja: {payment.pixKeyMasked}</small> : null}
 
@@ -269,8 +311,8 @@ export function OrderPage() {
             ) : null}
 
             <p className="store__hint">
-              Esta página se atualiza sozinha. Guarde o número <strong>#{order.order.orderNumber}</strong> para
-              retirar no balcão.
+              Esta página se atualiza sozinha. Guarde o número <strong>#{order.order.orderNumber}</strong>{' '}
+              {order.order.fulfillment === 'DELIVERY' ? 'para acompanhar a entrega.' : 'para retirar no balcão.'}
             </p>
 
             <Link className="ui-btn ui-btn--secondary" to="../..">

@@ -317,6 +317,44 @@ export interface PixSettingsView {
   mercadoPagoTokenMasked: string | null;
 }
 
+export interface AddressInput {
+  postalCode: string;
+  street: string;
+  streetNumber: string;
+  complement?: string;
+  district: string;
+  city: string;
+  stateCode: string;
+  reference?: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+export interface DeliveryQuote {
+  deliverable: boolean;
+  feeCents?: number;
+  etaMinutes?: number;
+  minOrderCents?: number;
+}
+
+export interface DeliveryInfo {
+  latitude: number | null;
+  longitude: number | null;
+  radiusMeters: number | null;
+  active: boolean;
+}
+
+export interface DeliveryConfig {
+  latitude: number | null;
+  longitude: number | null;
+  configured: boolean;
+  isActive: boolean;
+  radiusMeters: number;
+  feeCents: number;
+  minOrderCents: number;
+  etaMinutes: number;
+}
+
 export interface OrderDetail {
   order: Order;
   items: OrderItem[];
@@ -491,6 +529,35 @@ export class ApiClient {
       body: payload,
       headers: { 'Idempotency-Key': idempotencyKey },
     });
+  }
+
+  createAddress(input: AddressInput): Promise<{ id: string }> {
+    return this.request('POST', '/v1/me/addresses', { body: input });
+  }
+
+  quoteDelivery(input: {
+    branchId: string;
+    postalCode: string;
+    latitude?: number;
+    longitude?: number;
+  }): Promise<DeliveryQuote> {
+    return this.request('POST', '/v1/public/delivery-quote', { body: input });
+  }
+
+  getDeliveryInfo(branchId: string): Promise<DeliveryInfo> {
+    return this.request('GET', `/v1/public/branches/${branchId}/delivery-info`);
+  }
+
+  getDeliveryConfig(branchId: string): Promise<DeliveryConfig> {
+    return this.request('GET', `/v1/branches/${branchId}/delivery-zone`);
+  }
+
+  setDeliveryConfig(
+    branchId: string,
+    body: Omit<DeliveryConfig, 'configured'> & { latitude: number; longitude: number },
+  ) {
+    const { configured: _ignored, ...rest } = body as typeof body & { configured?: boolean };
+    return this.request<{ ok: true }>('PUT', `/v1/branches/${branchId}/delivery-zone`, { body: rest });
   }
 
   listMyOrders(): Promise<OrderDetail[]> {

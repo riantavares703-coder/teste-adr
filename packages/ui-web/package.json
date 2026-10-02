@@ -9,12 +9,14 @@
   },
   "dependencies": {
     "@plataforma/domain": "workspace:*",
+    "leaflet": "^1.9.4",
     "socket.io-client": "^4.8.1"
   },
   "peerDependencies": {
     "react": "^18.3.1"
   },
   "devDependencies": {
+    "@types/leaflet": "^1.9.22",
     "@types/react": "^18.3.12",
     "typescript": "^5.6.3"
   }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { MenuCategory, MenuProduct } from '@plataforma/client';
 import { describeOpenState } from '@plataforma/domain';
-import { EmptyState, Price, Skeleton } from '@plataforma/ui-web';
+import { EmptyState, Price, Skeleton, ThemeToggle, foodEmoji } from '@plataforma/ui-web';
 import { useStore } from '../store-context';
 import { useCart } from '../cart-context';
 import { ProductSheet } from '../components/ProductSheet';
@@ -90,6 +90,7 @@ export function MenuPage() {
     <main className="menu">
       <header className="menu__hero">
         <div className="menu__hero-bg" aria-hidden="true" />
+        <ThemeToggle className="menu__themetoggle" />
         <div className="menu__hero-content">
           {menu.theme.logoUrl ? (
             <img className="menu__logo" src={menu.theme.logoUrl} alt="" />
@@ -254,7 +255,12 @@ function ProductCard({
 
         {product.thumbUrl ? (
           <img className="card__img" src={product.thumbUrl} alt="" loading="lazy" />
-        ) : null}
+        ) : (
+          // Sem foto: um bloco do mesmo tamanho mantém o ritmo do cardápio.
+          <div className="card__img card__img--ph" aria-hidden="true">
+            {foodEmoji(product.name, product.description)}
+          </div>
+        )}
 
         {!available ? <span className="card__soldout">Esgotado</span> : null}
 

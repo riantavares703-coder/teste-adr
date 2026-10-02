@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toOrderItems } from '@plataforma/client';
 import type { PaymentMethod } from '@plataforma/domain';
-import { Button, Field, Notice, Price, Row, friendlyMessage } from '@plataforma/ui-web';
+import { Button, Field, Notice, Price, Row, formatBRL, friendlyMessage } from '@plataforma/ui-web';
 import { useStore } from '../store-context';
 import { useCart } from '../cart-context';
 import { maskPhone, toE164 } from '../phone';
+import { DeliveryAddress, type DeliveryChoice } from '../components/DeliveryAddress';
 
 const METHOD_LABEL: Record<string, string> = {
   PIX: 'Pix',
@@ -39,6 +40,10 @@ export function CheckoutPage() {
     (menu.settings?.enabledPaymentMethods?.[0] as PaymentMethod) ?? 'PIX',
   );
   const [notes, setNotes] = useState('');
+  const [delivery, setDelivery] = useState<DeliveryChoice | null>(null);
+  const deliveryMin = fulfillment === 'DELIVERY' ? (delivery?.quote.minOrderCents ?? 0) : 0;
+  const belowMin = deliveryMin > subtotalCents;
+  const feeCents = fulfillment === 'DELIVERY' ? (delivery?.quote.feeCents ?? 0) : 0;
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ name?: string; phone?: string }>({});
@@ -52,6 +57,14 @@ export function CheckoutPage() {
     if (!e164) problems.phone = 'Informe um telefone com DDD';
     setFieldErrors(problems);
     if (Object.keys(problems).length > 0) return;
+    if (belowMin) {
+      setError(`O pedido mínimo para entrega é ${formatBRL(deliveryMin)}. Adicione mais itens ou escolha retirar.`);
+      return;
+    }
+    if (fulfillment === 'DELIVERY' && !delivery) {
+      setError('Informe um endereço completo, dentro da área de entrega.');
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -60,14 +73,18 @@ export function CheckoutPage() {
       // mesmo que o telefone não seja verificado.
       await api.startGuestSession({ phone: e164!, fullName: name.trim() });
 
+      const addressId =
+        fulfillment === 'DELIVERY' && delivery ? (await api.createAddress(delivery.address)).id : undefined;
+
       const created = await api.createOrder(
         {
           branchId: menu.branch.id,
           fulfillment,
           paymentMethod: method,
           items: toOrderItems(cart),
+          deliveryAddressId: addressId,
           customerNotes: notes.trim() || undefined,
-          expectedTotalCents: subtotalCents,
+          expectedTotalCents: subtotalCents + feeCents,
         },
         // Chave por TENTATIVA: se a resposta se perder na rede e o cliente
         // tocar de novo, o servidor devolve o MESMO pedido em vez de criar um
@@ -150,6 +167,8 @@ export function CheckoutPage() {
         ) : null}
       </fieldset>
 
+      {fulfillment === 'DELIVERY' ? <DeliveryAddress onChange={setDelivery} /> : null}
+
       <fieldset className="ui-card store__fieldset">
         <legend>Pagamento</legend>
         {methods.map((m) => (
@@ -184,8 +203,20 @@ export function CheckoutPage() {
           />
         ))}
         <Row label="Subtotal" value={<Price cents={subtotalCents} />} />
-        <small>O total final, com taxa de entrega, é calculado pela loja.</small>
+        {fulfillment === 'DELIVERY' ? (
+          <Row
+            label="Taxa de entrega"
+            value={delivery ? <Price cents={feeCents} /> : 'informe o endereço'}
+          />
+        ) : null}
+        <Row label="Total" value={<Price cents={subtotalCents + feeCents} />} />
       </div>
+
+      {belowMin ? (
+        <Notice tone="warning" title="Pedido abaixo do mínimo para entrega">
+          O mínimo é <Price cents={deliveryMin} />. Adicione mais itens ou escolha retirar.
+        </Notice>
+      ) : null}
 
       {error ? <Notice tone="danger">{error}</Notice> : null}
 

@@ -380,6 +380,7 @@ export class OrderingService {
     // --- taxa de entrega: resolvida no servidor -----------------------------
     let deliveryFeeCents = 0;
     let deliveryZoneId: string | null = null;
+    let zoneMinOrderCents = 0;
     let addressSnapshot: Record<string, unknown> | null = null;
 
     if (input.fulfillment === 'DELIVERY') {
@@ -407,6 +408,7 @@ export class OrderingService {
 
       deliveryFeeCents = zone.feeCents;
       deliveryZoneId = zone.id;
+      zoneMinOrderCents = zone.minOrderCents;
       addressSnapshot = {
         postalCode: address.postalCode,
         street: address.street,
@@ -433,9 +435,11 @@ export class OrderingService {
       discountCents: 0,
     });
 
-    if (priced.subtotalCents < settings.minOrderCents) {
+    // Vale o maior entre o mínimo da unidade e o mínimo da zona de entrega.
+    const minOrderCents = Math.max(settings.minOrderCents, zoneMinOrderCents);
+    if (priced.subtotalCents < minOrderCents) {
       throw unprocessable('PEDIDO_MINIMO', 'Pedido abaixo do valor mínimo da unidade', {
-        minOrderCents: settings.minOrderCents,
+        minOrderCents,
         subtotalCents: priced.subtotalCents,
       });
     }
@@ -613,11 +617,11 @@ export class OrderingService {
     return formatOrderNumber((result.rows[0] as { last_number: number }).last_number);
   }
 
-  private async resolveDeliveryZone(
+  async resolveDeliveryZone(
     tx: Db,
     branchId: string,
     address: { postalCode: string; latitude: number | null; longitude: number | null },
-  ): Promise<{ id: string; feeCents: number } | null> {
+  ): Promise<{ id: string; feeCents: number; etaMinutes: number; minOrderCents: number } | null> {
     const zones = await tx
       .select()
       .from(s.deliveryZones)
@@ -637,14 +641,14 @@ export class OrderingService {
     const origin = branchRows[0];
 
     const normalizedCep = address.postalCode.replace(/\D/g, '');
-    const matches: Array<{ id: string; feeCents: number }> = [];
+    const matches: Array<{ id: string; feeCents: number; etaMinutes: number; minOrderCents: number }> = [];
 
     for (const zone of zones) {
       if (zone.type === 'POSTAL_RANGE') {
         const from = (zone.postalCodeFrom ?? '').replace(/\D/g, '');
         const to = (zone.postalCodeTo ?? '').replace(/\D/g, '');
         if (normalizedCep >= from && normalizedCep <= to) {
-          matches.push({ id: zone.id, feeCents: zone.feeCents });
+          matches.push({ id: zone.id, feeCents: zone.feeCents, etaMinutes: zone.etaMinutes, minOrderCents: zone.minOrderCents });
         }
       } else if (
         zone.type === 'RADIUS' &&
@@ -661,7 +665,7 @@ export class OrderingService {
           address.longitude,
         );
         if (meters <= zone.radiusMeters) {
-          matches.push({ id: zone.id, feeCents: zone.feeCents });
+          matches.push({ id: zone.id, feeCents: zone.feeCents, etaMinutes: zone.etaMinutes, minOrderCents: zone.minOrderCents });
         }
       }
     }
@@ -671,6 +675,207 @@ export class OrderingService {
     // para que a cobrança não dependa da ordem de inserção.
     matches.sort((a, b) => a.feeCents - b.feeCents);
     return matches[0]!;
+  }
+
+  // ===========================================================================
+  // ENTREGA: endereços do cliente, cotação e zona da loja
+  // ===========================================================================
+
+  async createAddress(
+    principal: Principal,
+    input: {
+      postalCode: string;
+      street: string;
+      streetNumber: string;
+      complement?: string;
+      district: string;
+      city: string;
+      stateCode: string;
+      reference?: string;
+      latitude?: number;
+      longitude?: number;
+    },
+  ): Promise<{ id: string }> {
+    const id = uuidv7();
+    await this.db.withTenant(toTenantContext(principal), async (tx) => {
+      await tx.insert(s.deliveryAddresses).values({
+        id,
+        customerId: principal.userId,
+        postalCode: input.postalCode.replace(/\D/g, ''),
+        street: input.street,
+        streetNumber: input.streetNumber,
+        complement: input.complement ?? null,
+        district: input.district,
+        city: input.city,
+        stateCode: input.stateCode.toUpperCase(),
+        reference: input.reference ?? null,
+        latitude: input.latitude ?? null,
+        longitude: input.longitude ?? null,
+      } as never);
+    });
+    return { id };
+  }
+
+  /** Cotação pública: o cliente vê taxa e prazo ANTES de enviar o pedido. */
+  async quoteDelivery(input: {
+    branchId: string;
+    postalCode: string;
+    latitude?: number;
+    longitude?: number;
+  }): Promise<{ deliverable: boolean; feeCents?: number; etaMinutes?: number; minOrderCents?: number }> {
+    return this.db.withPlatform(async (tx) => {
+      const zone = await this.resolveDeliveryZone(tx, input.branchId, {
+        postalCode: input.postalCode,
+        latitude: input.latitude ?? null,
+        longitude: input.longitude ?? null,
+      });
+      if (!zone) return { deliverable: false };
+      return {
+        deliverable: true,
+        feeCents: zone.feeCents,
+        etaMinutes: zone.etaMinutes,
+        minOrderCents: zone.minOrderCents,
+      };
+    });
+  }
+
+  /** Público: onde fica a loja e até onde ela entrega, para o mapa do cliente. */
+  async getDeliveryInfo(branchId: string): Promise<{
+    latitude: number | null;
+    longitude: number | null;
+    radiusMeters: number | null;
+    active: boolean;
+  }> {
+    return this.db.withPlatform(async (tx) => {
+      const [branch] = await tx
+        .select({ latitude: s.branches.latitude, longitude: s.branches.longitude })
+        .from(s.branches)
+        .where(eq(s.branches.id, branchId))
+        .limit(1);
+      if (!branch) throw notFound();
+      const [zone] = await tx
+        .select({ radiusMeters: s.deliveryZones.radiusMeters })
+        .from(s.deliveryZones)
+        .where(
+          and(
+            eq(s.deliveryZones.branchId, branchId),
+            eq(s.deliveryZones.type, 'RADIUS'),
+            eq(s.deliveryZones.isActive, true),
+            isNull(s.deliveryZones.deletedAt),
+          ),
+        )
+        .limit(1);
+      return {
+        latitude: branch.latitude,
+        longitude: branch.longitude,
+        radiusMeters: zone?.radiusMeters ?? null,
+        active: Boolean(zone),
+      };
+    });
+  }
+
+  async getDeliveryConfig(principal: Principal, branchId: string) {
+    await this.branchAccess.assertAccess(principal, branchId);
+    return this.db.withTenant(toTenantContext(principal), async (tx) => {
+      const [branch] = await tx
+        .select({ latitude: s.branches.latitude, longitude: s.branches.longitude })
+        .from(s.branches)
+        .where(eq(s.branches.id, branchId))
+        .limit(1);
+      if (!branch) throw notFound();
+      const [zone] = await tx
+        .select()
+        .from(s.deliveryZones)
+        .where(
+          and(
+            eq(s.deliveryZones.branchId, branchId),
+            eq(s.deliveryZones.type, 'RADIUS'),
+            isNull(s.deliveryZones.deletedAt),
+          ),
+        )
+        .limit(1);
+      return {
+        latitude: branch.latitude,
+        longitude: branch.longitude,
+        configured: Boolean(zone),
+        isActive: zone?.isActive ?? false,
+        radiusMeters: zone?.radiusMeters ?? 3000,
+        feeCents: zone?.feeCents ?? 500,
+        minOrderCents: zone?.minOrderCents ?? 0,
+        etaMinutes: zone?.etaMinutes ?? 40,
+      };
+    });
+  }
+
+  /** Uma zona circular por unidade: ponto da loja + raio + taxa. */
+  async setDeliveryConfig(
+    principal: Principal,
+    branchId: string,
+    input: {
+      latitude: number;
+      longitude: number;
+      radiusMeters: number;
+      feeCents: number;
+      minOrderCents: number;
+      etaMinutes: number;
+      isActive: boolean;
+    },
+  ): Promise<void> {
+    await this.branchAccess.assertAccess(principal, branchId);
+    await this.db.withTenant(toTenantContext(principal), async (tx) => {
+      const [branch] = await tx
+        .select({ organizationId: s.branches.organizationId })
+        .from(s.branches)
+        .where(eq(s.branches.id, branchId))
+        .limit(1);
+      if (!branch) throw notFound();
+
+      await tx
+        .update(s.branches)
+        .set({ latitude: input.latitude, longitude: input.longitude })
+        .where(eq(s.branches.id, branchId));
+
+      const values = {
+        radiusMeters: input.radiusMeters,
+        feeCents: input.feeCents,
+        minOrderCents: input.minOrderCents,
+        etaMinutes: input.etaMinutes,
+        isActive: input.isActive,
+      };
+      const existing = await tx
+        .select({ id: s.deliveryZones.id })
+        .from(s.deliveryZones)
+        .where(
+          and(
+            eq(s.deliveryZones.branchId, branchId),
+            eq(s.deliveryZones.type, 'RADIUS'),
+            isNull(s.deliveryZones.deletedAt),
+          ),
+        )
+        .limit(1);
+      if (existing[0]) {
+        await tx.update(s.deliveryZones).set(values).where(eq(s.deliveryZones.id, existing[0].id));
+      } else {
+        await tx.insert(s.deliveryZones).values({
+          id: uuidv7(),
+          organizationId: branch.organizationId,
+          branchId,
+          name: 'Entrega',
+          type: 'RADIUS',
+          ...values,
+        } as never);
+      }
+
+      await this.audit.record(tx, {
+        principal,
+        organizationId: branch.organizationId,
+        branchId,
+        action: 'delivery_zone.updated',
+        resourceType: 'delivery_zone',
+        resourceId: branchId,
+        metadata: values,
+      });
+    });
   }
 
   // ===========================================================================
@@ -764,6 +969,17 @@ export class OrderingService {
       }
       if (to === 'CANCELLED' || to === 'REJECTED' || to === 'EXPIRED') {
         await this.inventory.releaseReservations(tx, orderId, 'RELEASE', principal.userId);
+        // Pedido encerrado não pode ter cobrança aberta: sem isto, a loja (ou a
+        // conciliação automática) ainda "confirmaria" o pagamento de um pedido cancelado.
+        await tx
+          .update(s.payments)
+          .set({ status: 'CANCELLED' })
+          .where(
+            and(
+              eq(s.payments.orderId, orderId),
+              inArray(s.payments.status, ['PENDING', 'AWAITING_CONFIRMATION']),
+            ),
+          );
       }
 
       await this.audit.record(tx, {

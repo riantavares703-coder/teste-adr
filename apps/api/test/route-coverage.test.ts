@@ -111,6 +111,8 @@ describe('Cobertura de autorização das rotas', () => {
       'GET /v1/media/:storageKey',
       'GET /v1/public/:organizationSlug/:branchSlug/menu',
       'GET /v1/public/:organizationSlug/branches',
+      // Vitrine de entrega: onde a loja fica e até onde entrega. Só leitura, sem dado pessoal.
+      'GET /v1/public/branches/:branchId/delivery-info',
       'GET /v1/public/products/:id',
       // Cliente de balcão: emite sessão CUSTOMER sem código de verificação,
       // porque quem chega pelo QR code não tem conta e não há provedor de
@@ -122,6 +124,8 @@ describe('Cobertura de autorização das rotas', () => {
       'POST /v1/auth/otp/request',
       'POST /v1/auth/otp/verify',
       'POST /v1/auth/refresh',
+      // Cotação de taxa antes do pedido: recebe CEP/ponto, devolve taxa e prazo. Não grava nada.
+      'POST /v1/public/delivery-quote',
     ]);
   });
 
@@ -145,7 +149,9 @@ describe('Cobertura de autorização das rotas', () => {
         ['POST', 'PUT', 'PATCH', 'DELETE'].includes(r.method) &&
         !r.isPublic &&
         !r.path.startsWith('/v1/auth') &&
-        !r.path.startsWith('/v1/orders'),
+        !r.path.startsWith('/v1/orders') &&
+        // Recursos do próprio cliente (endereços): a posse é garantida por RLS, não por unidade.
+        !r.path.startsWith('/v1/me/'),
     );
     const missing = writeRoutes.filter((r) => !r.path.includes(':branchId'));
     expect(missing.map((r) => `${r.method} ${r.path}`)).toEqual([]);
