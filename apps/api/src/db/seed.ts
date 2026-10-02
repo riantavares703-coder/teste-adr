@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import pg from 'pg';
+import { DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD } from '../common/default-credentials.js';
 
 /**
  * Massa inicial de um restaurante demonstrativo.
@@ -16,9 +17,9 @@ import pg from 'pg';
 export const DEMO = {
   organizationSlug: 'demo',
   branchSlug: 'centro',
-  adminEmail: 'admin@demo.local',
+  adminEmail: DEFAULT_ADMIN_EMAIL,
   /** Mínimo de 12 caracteres exigido por PasswordService.validatePolicy. */
-  adminPassword: 'restaurante123',
+  adminPassword: DEFAULT_ADMIN_PASSWORD,
 } as const;
 
 interface SeedResult {

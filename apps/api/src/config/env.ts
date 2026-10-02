@@ -36,10 +36,51 @@ const EnvSchema = z.object({
    * que NÃO finge que a operação aconteceu: marca a notificação como SKIPPED
    * com motivo PROVIDER_NOT_CONFIGURED.
    */
+  /**
+   * Endereço público do sistema (ex.: https://pedidos.minhaloja.com.br). Quando
+   * definido e público, é a base do link e do QR code do cardápio. O launcher o
+   * preenche com o IP da rede local, que só vale dentro do Wi-Fi da loja.
+   */
+  PUBLIC_BASE_URL: z.string().optional(),
+  /**
+   * SÓ PARA TESTES: deixa a verificação do link alcançar a rede local. Recusado
+   * em produção (ver superRefine abaixo) — em produção essa verificação é uma
+   * chamada feita pelo servidor a um endereço informado por um usuário.
+   */
+  PUBLIC_URL_PROBE_ALLOW_PRIVATE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+
   WHATSAPP_PROVIDER: z.enum(['META_CLOUD_API', 'LOGGING']).default('LOGGING'),
   WHATSAPP_API_BASE_URL: z.string().default('https://graph.facebook.com/v21.0'),
   PUSH_PROVIDER: z.enum(['EXPO', 'LOGGING']).default('LOGGING'),
   EXPO_PUSH_URL: z.string().default('https://exp.host/--/api/v2/push/send'),
+}).superRefine((env, ctx) => {
+  if (env.NODE_ENV === 'production') {
+    // Sem estas duas, o sistema "funciona" até o primeiro reinício e então perde
+    // o acesso ao que gravou: sem DATA_ENCRYPTION_KEY a chave é efêmera (a chave
+    // Pix e o token do Mercado Pago ficam ilegíveis); sem PASSWORD_PEPPER os
+    // hashes gravados deixam de conferir (ninguém consegue entrar). Falhar na
+    // partida é melhor do que descobrir isso com a loja aberta.
+    for (const name of ['DATA_ENCRYPTION_KEY', 'PASSWORD_PEPPER'] as const) {
+      const value = env[name];
+      if (!value || value.length < 16) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [name],
+          message: 'é obrigatória em produção (mínimo de 16 caracteres) e não pode mudar entre reinícios',
+        });
+      }
+    }
+  }
+  if (env.NODE_ENV === 'production' && env.PUBLIC_URL_PROBE_ALLOW_PRIVATE) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['PUBLIC_URL_PROBE_ALLOW_PRIVATE'],
+      message: 'não pode ser ativado em produção',
+    });
+  }
 });
 
 export type Env = z.infer<typeof EnvSchema>;

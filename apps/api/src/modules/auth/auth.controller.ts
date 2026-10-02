@@ -42,6 +42,14 @@ const GuestSchema = z
   })
   .strict();
 
+const ChangePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1).max(128),
+    newPassword: z.string().min(1).max(128),
+    deviceId: z.string().max(200).optional(),
+  })
+  .strict();
+
 const RefreshSchema = z
   .object({ refreshToken: z.string().min(10).max(500), deviceId: z.string().max(200).optional() })
   .strict();
@@ -109,6 +117,25 @@ export class AuthController {
     @Req() req: { ip?: string },
   ) {
     return this.auth.refresh(body.refreshToken, { ip: req.ip, deviceId: body.deviceId });
+  }
+
+  /**
+   * Troca a senha do operador logado e devolve uma sessão nova: as anteriores
+   * (inclusive a deste aparelho) são encerradas.
+   */
+  @Post('password')
+  @RequirePermission('branch:read')
+  async changePassword(
+    @Body(new ZodValidationPipe(ChangePasswordSchema)) body: z.infer<typeof ChangePasswordSchema>,
+    @CurrentUser() principal: Principal | null,
+    @Req() req: { ip?: string; headers: Record<string, string | undefined> },
+  ) {
+    if (!principal) throw unauthorized();
+    return this.auth.changePassword(principal, {
+      ...body,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Post('logout')

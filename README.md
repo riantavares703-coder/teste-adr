@@ -7,6 +7,9 @@ Aplicativo mobile (Android + iOS) para **clientes** e **operadores/administrador
 > A arquitetura está em [`docs/`](docs/); o código, em [`apps/`](apps/) e [`packages/`](packages/).
 > Os desvios da arquitetura aprovada estão justificados em
 > [`docs/ARQUITETURA-DELTA.md`](docs/ARQUITETURA-DELTA.md).
+>
+> **Para o cliente abrir o cardápio de casa (e não só no Wi-Fi da loja)**, o sistema precisa de um endereço
+> público — veja [`docs/PUBLICAR.md`](docs/PUBLICAR.md).
 
 ---
 

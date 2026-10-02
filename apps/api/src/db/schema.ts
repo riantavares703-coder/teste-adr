@@ -176,6 +176,7 @@ export const storeSettings = pgTable('store_settings', {
   enabledPaymentMethods: text('enabled_payment_methods').array().notNull(),
   cancellationWindowMinutes: integer('cancellation_window_minutes').notNull().default(5),
   currency: char('currency', { length: 3 }).notNull().default('BRL'),
+  publicBaseUrl: text('public_base_url'),
 });
 
 export const brandFont = pgEnum('brand_font', [

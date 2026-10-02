@@ -136,9 +136,10 @@
 
 .ui-section-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--sp-3);
+  gap: var(--sp-2) var(--sp-3);
   margin: var(--sp-6) 0 var(--sp-3);
 }
 
@@ -531,4 +532,11 @@
 }
 :root[data-scheme='dark'] .leaflet-control-attribution a {
   color: var(--c-text);
+}
+
+/* Link dentro de um aviso: herda a cor do texto e se destaca pelo sublinhado. */
+.ui-notice a {
+  color: inherit;
+  font-weight: var(--weight-semibold);
+  text-decoration: underline;
 }

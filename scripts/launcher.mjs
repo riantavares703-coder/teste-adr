@@ -616,8 +616,10 @@ async function main() {
     DATABASE_URL: `postgresql://postgres@localhost:${PGPORT}/${DBNAME}`,
     MEDIA_STORAGE_DIR: join(RUNTIME, 'media'),
     // O servidor monta o link do QR code a partir daqui, para que o endereço
-    // impresso neste console e o do painel sejam sempre o mesmo.
-    PUBLIC_BASE_URL: `http://${lan ?? 'localhost'}:${APIPORT}`,
+    // impresso neste console e o do painel sejam sempre o mesmo. Um endereço
+    // público definido pelo dono (PUBLIC_BASE_URL=https://...) tem prioridade;
+    // sem ele, vale o IP da rede local — que só abre dentro do Wi-Fi da loja.
+    PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL?.trim() || `http://${lan ?? 'localhost'}:${APIPORT}`,
   };
 
   step('Atualizando o banco de dados');
@@ -652,11 +654,16 @@ async function main() {
   console.log('=======================================');
   console.log(`\n  Painel do operador:  ${adminUrl}`);
   console.log(`  Cardápio do cliente: ${menuUrl}`);
-  if (!lan) {
+  if (!lan && !process.env.PUBLIC_BASE_URL) {
     console.log('\n  Aviso: não foi possível descobrir o IP desta máquina na rede.');
     console.log('  Os clientes só conseguirão abrir o cardápio a partir deste computador.');
+  } else if (!process.env.PUBLIC_BASE_URL) {
+    console.log('\n  Este endereço só abre para quem está no Wi-Fi da loja.');
+    console.log('  Para clientes em casa ou no 4G, publique o cardápio (veja docs/PUBLICAR.md)');
+    console.log('  e cadastre o endereço público no painel, em Compartilhar.');
   }
   console.log('\n  Entrar como: admin@demo.local / restaurante123');
+  console.log('  (troque esta senha em "Minha conta" antes de publicar o cardápio na internet)');
   console.log('\n  Para encerrar, feche esta janela.\n');
 
   if (!noBrowser) openBrowser(adminUrl);

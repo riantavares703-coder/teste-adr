@@ -252,6 +252,15 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
  * 400/422 sem status explícito abaixo) caía na mensagem de rede, escondendo
  * do cliente exatamente o motivo pelo qual o pedido foi recusado.
  */
+/** Motivos de recusa do endereço público (espelham o que o servidor valida). */
+const PUBLIC_ADDRESS_REASON: Record<string, string> = {
+  NOT_HTTPS: 'Use um endereço seguro, começando com https://.',
+  NOT_PUBLIC: 'Esse endereço só funciona dentro da sua rede. Informe um endereço público da internet.',
+  HAS_CREDENTIALS: 'O endereço não pode conter usuário ou senha.',
+  IP_LITERAL: 'Use um nome de site (domínio), e não um número de IP.',
+  INVALID_URL: 'Endereço inválido. Exemplo: https://cardapio.minhaloja.com.br',
+};
+
 export function friendlyMessage(error: unknown): string {
   const code = (error as { code?: string })?.code;
   const status = (error as { status?: number })?.status;
@@ -272,6 +281,14 @@ export function friendlyMessage(error: unknown): string {
       'O Mercado Pago não aceitou este access token. Copie o Access Token de produção em Credenciais e tente de novo.',
     MERCADO_PAGO_INDISPONIVEL:
       'Não foi possível falar com o Mercado Pago agora. Verifique a internet do computador da loja e tente de novo.',
+    ENDERECO_INVALIDO:
+      PUBLIC_ADDRESS_REASON[String(details?.reason ?? '')] ?? PUBLIC_ADDRESS_REASON.INVALID_URL!,
+    SENHA_PADRAO_ATIVA:
+      'Antes de publicar na internet, troque a senha da conta de demonstração (Minha conta).',
+    SENHA_FRACA: 'A senha precisa ter ao menos 12 caracteres e não pode ser a senha do manual.',
+    SENHA_IGUAL: 'A nova senha precisa ser diferente da atual.',
+    SENHA_ATUAL_INCORRETA: 'A senha atual está incorreta.',
+    MUITAS_TENTATIVAS: 'Muitas tentativas. Aguarde alguns minutos e tente de novo.',
     METODO_INDISPONIVEL: 'Essa forma de pagamento não está disponível nesta loja.',
     CARRINHO_VAZIO: 'Seu carrinho está vazio.',
     CARRINHO_GRANDE: 'Carrinho com itens demais. Remova alguns e tente de novo.',

@@ -1,4 +1,5 @@
-import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
+import { useEffect } from 'react';
+import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { ThemeToggle } from '@plataforma/ui-web';
 import { SessionProvider, useSession } from './session';
 import { LoginPage } from './pages/LoginPage';
@@ -7,6 +8,7 @@ import { SharePage } from './pages/SharePage';
 import { MenuEditorPage } from './pages/MenuEditorPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { StoreSettingsPage } from './pages/StoreSettingsPage';
+import { AccountPage } from './pages/AccountPage';
 
 export function App() {
   return (
@@ -18,6 +20,14 @@ export function App() {
 
 function Shell() {
   const { profile, branch, branches, selectBranch, signOut, can } = useSession();
+  const { pathname } = useLocation();
+
+  // No celular o menu rola de lado: leva a aba da tela atual para a vista.
+  useEffect(() => {
+    document
+      .querySelector('.admin__nav a.active')
+      ?.scrollIntoView({ inline: 'center', block: 'nearest' });
+  }, [pathname]);
 
   return (
     <div className="admin">
@@ -50,7 +60,9 @@ function Shell() {
         </nav>
 
         <div className="admin__user">
-          <span>{profile.fullName}</span>
+          <NavLink to="/conta" className="admin__account" title="Minha conta e troca de senha">
+            {profile.fullName}
+          </NavLink>
           <ThemeToggle />
           <button type="button" className="ui-btn ui-btn--ghost" onClick={signOut}>
             Sair
@@ -61,6 +73,7 @@ function Shell() {
       <main className="admin__main">
         <Routes>
           <Route path="/pedidos" element={<OrdersPage />} />
+          <Route path="/conta" element={<AccountPage />} />
           <Route path="/faturamento" element={<DashboardPage />} />
           <Route path="/cardapio" element={<MenuEditorPage />} />
           <Route path="/loja" element={<StoreSettingsPage />} />
